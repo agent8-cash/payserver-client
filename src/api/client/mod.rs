@@ -23,11 +23,39 @@
 //! those branches; see the `invoices`/`payments` tests for which branches
 //! that leaves untested.
 
+use std::{cell::RefCell, rc::Rc};
+
 use gloo_net::http::{Request, RequestBuilder};
 use serde::{Serialize, de::DeserializeOwned};
 use thiserror::Error;
 
 mod admin;
+
+type SessionEndedHandler = Rc<dyn Fn()>;
+
+thread_local! {
+    static ON_SESSION_ENDED: RefCell<Option<SessionEndedHandler>> = const { RefCell::new(None) };
+}
+
+/// Register the one reaction to the server rejecting the session; `None` removes it.
+///
+/// A plain callback rather than a signal so that firing it from a 401 reads
+/// and writes nothing reactive on the caller's side.
+pub fn set_session_ended_handler(handler: Option<SessionEndedHandler>) {
+    ON_SESSION_ENDED.with(|h| *h.borrow_mut() = handler);
+}
+
+/// Every 401 from this client funnels through here: it tells the registered
+/// handler the session is over, and still returns the typed error so the
+/// calling page's own failure handling is unchanged.
+fn session_ended() -> ApiError {
+    // Clone out first so a handler that re-enters cannot hit a borrowed cell.
+    let handler = ON_SESSION_ENDED.with(|h| h.borrow().clone());
+    if let Some(handler) = handler {
+        handler();
+    }
+    ApiError::Unauthorized
+}
 mod health;
 mod invoices;
 mod payments;
@@ -194,7 +222,7 @@ impl ApiClient {
             .map_err(|e| ApiError::Network(e.to_string()))?;
 
         if response.status() == 401 {
-            return Err(ApiError::Unauthorized);
+            return Err(session_ended());
         }
 
         if !response.ok() {
@@ -313,7 +341,7 @@ impl ApiClient {
             .map_err(|e| ApiError::Network(e.to_string()))?;
 
         if response.status() == 401 {
-            return Err(ApiError::Unauthorized);
+            return Err(session_ended());
         }
 
         if !response.ok() {
@@ -355,7 +383,7 @@ impl ApiClient {
             .map_err(|e| ApiError::Network(e.to_string()))?;
 
         if response.status() == 401 {
-            return Err(ApiError::Unauthorized);
+            return Err(session_ended());
         }
         if !response.ok() {
             let message = response.text().await.unwrap_or_default();
@@ -380,7 +408,7 @@ impl ApiClient {
             .map_err(|e| ApiError::Network(e.to_string()))?;
 
         if response.status() == 401 {
-            return Err(ApiError::Unauthorized);
+            return Err(session_ended());
         }
         if !response.ok() {
             let message = response.text().await.unwrap_or_default();
@@ -405,7 +433,7 @@ impl ApiClient {
             .map_err(|e| ApiError::Network(e.to_string()))?;
 
         if response.status() == 401 {
-            return Err(ApiError::Unauthorized);
+            return Err(session_ended());
         }
         if !response.ok() {
             let message = response.text().await.unwrap_or_default();
@@ -423,7 +451,7 @@ impl ApiClient {
         response: gloo_net::http::Response,
     ) -> Result<T, ApiError> {
         if response.status() == 401 {
-            return Err(ApiError::Unauthorized);
+            return Err(session_ended());
         }
 
         if !response.ok() {
@@ -444,6 +472,19 @@ impl ApiClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn session_ended_notifies_handler_and_returns_typed_error() {
+        let fired = Rc::new(std::cell::Cell::new(0));
+        let seen = fired.clone();
+        set_session_ended_handler(Some(Rc::new(move || seen.set(seen.get() + 1))));
+        assert!(matches!(session_ended(), ApiError::Unauthorized));
+        assert_eq!(fired.get(), 1);
+
+        set_session_ended_handler(None);
+        assert!(matches!(session_ended(), ApiError::Unauthorized));
+        assert_eq!(fired.get(), 1, "a removed handler must not fire");
+    }
 
     #[test]
     fn test_api_client_new() {
