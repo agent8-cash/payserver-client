@@ -12,7 +12,7 @@ use payserver_plugin_api::PageIcon;
 use ui_kit::hooks::use_storage::{get_local, set_local};
 use ui_kit::{AuthGuard, use_auth};
 
-use crate::api::{ApiClient, Store};
+use crate::api::{ApiClient, Store, set_session_ended_handler};
 use crate::components::{CreateInvoiceModal, CreateInvoiceSignal};
 use crate::services::WebSocketService;
 
@@ -23,6 +23,28 @@ use super::icons::{
     IconTag, IconUser, IconWallet,
 };
 use super::{SELECTED_STORE_KEY, StoreContext, StoresStatus};
+
+/// Register the session-ended handler for as long as the protected layout is mounted.
+fn register_session_ended_handler(auth: ui_kit::hooks::use_auth::AuthContext) {
+    set_session_ended_handler(Some(Rc::new(move || {
+        if !matches!(
+            auth.state.get_untracked(),
+            ui_kit::types::AuthState::Authenticated(_)
+        ) {
+            return;
+        }
+        if let Some(location) = web_sys::window().map(|w| w.location()) {
+            let path = format!(
+                "{}{}",
+                location.pathname().unwrap_or_default(),
+                location.search().unwrap_or_default()
+            );
+            super::return_to::save(&path);
+        }
+        auth.logout();
+    })));
+    on_cleanup(|| set_session_ended_handler(None));
+}
 
 /// Protected layout with AuthGuard and app shell.
 ///
@@ -43,6 +65,13 @@ pub(super) fn ProtectedLayout() -> impl IntoView {
         ApiClient::new("").with_token(token)
     });
     provide_context(api);
+
+    // The single reaction to a rejected session, whichever endpoint saw the 401.
+    // It runs from the failed request's async task, never inside an Effect, and
+    // reads auth state untracked, so it adds no reactive edge. `logout()` flips
+    // state to Anonymous and the guard below navigates to the sign-in page; the
+    // page the merchant was on is saved first so sign-in can return there.
+    register_session_ended_handler(auth);
 
     // Store context: fetch stores, track selection, persist in localStorage.
     let (stores, set_stores) = signal(Vec::<Store>::new());
@@ -86,9 +115,6 @@ pub(super) fn ProtectedLayout() -> impl IntoView {
                 Err(e) => {
                     web_sys::console::error_1(&format!("Failed to fetch stores: {}", e).into());
                     let msg = e.to_string();
-                    if msg.contains("Unauthorized") || msg.contains("401") {
-                        auth.logout();
-                    }
                     // Surface it: pages keyed only on "no store selected" would
                     // otherwise render the onboarding empty state forever, with
                     // no error text and no way to retry.
