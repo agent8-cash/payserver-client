@@ -107,8 +107,25 @@ pub struct AccountStandingInfo {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StandingState {
-    Unknown,
     Good,
     Expiring,
     Lapsed,
+    /// Also what a state this client does not know deserializes to, so a new
+    /// server-side state degrades to "show nothing" rather than failing the read.
+    #[serde(other)]
+    Unknown,
+}
+
+#[cfg(test)]
+mod standing_tests {
+    use super::*;
+
+    #[test]
+    fn a_state_the_client_does_not_know_reads_as_unknown() {
+        let info: AccountStandingInfo = serde_json::from_str(
+            r#"{"state":"suspended","plan_name":null,"paid_through":null,"checkout_url":null}"#,
+        )
+        .unwrap();
+        assert_eq!(info.state, StandingState::Unknown);
+    }
 }

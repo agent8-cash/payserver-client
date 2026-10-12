@@ -82,29 +82,36 @@ pub fn StandingBanner() -> impl IntoView {
         handle_for_cleanup.borrow_mut().take();
     });
 
-    let standing = LocalResource::new(move || {
+    // The last answer that was read. A failed read leaves it alone: a lapse
+    // warning must not vanish because one poll hit a network blip.
+    let (current, set_current) = signal(None::<AccountStandingInfo>);
+    Effect::new(move |_| {
         tick.track();
-        let client = api.get();
-        async move {
+        // A hidden tab is nobody's presence; do not poll on its behalf.
+        if web_sys::window()
+            .and_then(|w| w.document())
+            .is_some_and(|d| d.hidden())
+        {
+            return;
+        }
+        let client = api.get_untracked();
+        leptos::task::spawn_local(async move {
             match client.get_account_standing().await {
-                Ok(info) => Some(info),
+                Ok(info) => set_current.set(Some(info)),
                 Err(e) => {
-                    // Still silent in the UI, but not in the console: a failed
-                    // read is not the same answer as "all good".
+                    // Still silent in the UI, but not in the console.
                     web_sys::console::warn_1(
                         &format!("Could not read account standing: {e}").into(),
                     );
-                    None
                 }
             }
-        }
+        });
     });
 
     view! {
         {move || {
-            standing
+            current
                 .get()
-                .and_then(|s| s.take())
                 .as_ref()
                 .and_then(notice)
                 .map(|n| {
