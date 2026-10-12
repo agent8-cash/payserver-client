@@ -5,9 +5,19 @@
 //! renders nothing while things are fine, and nothing when the standing could
 //! not be read: an error here must not look like a warning.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use leptos::prelude::*;
+use send_wrapper::SendWrapper;
 
 use crate::api::{AccountStandingInfo, ApiClient, StandingState};
+
+/// How often the standing is read again, in milliseconds. The shell outlives
+/// every route, so a single read would show a stale remedy link for as long as
+/// the tab stays open, and would go on saying "lapsed" after the merchant has
+/// paid. Well inside the lifetime of a freshly issued invoice.
+const REFRESH_MS: u32 = 60_000;
 
 /// What to say, separated from rendering so it can be tested.
 #[derive(Debug, PartialEq, Eq)]
@@ -56,7 +66,24 @@ fn notice(info: &AccountStandingInfo) -> Option<Notice> {
 #[component]
 pub fn StandingBanner() -> impl IntoView {
     let api = use_context::<Signal<ApiClient>>().expect("ApiClient must be provided");
+    let (tick, set_tick) = signal(0u32);
+    let handle: Rc<RefCell<Option<gloo_timers::callback::Interval>>> = Rc::new(RefCell::new(None));
+    let handle_for_effect = handle.clone();
+    Effect::new(move |_| {
+        let interval = gloo_timers::callback::Interval::new(REFRESH_MS, move || {
+            set_tick.update(|n| *n = n.wrapping_add(1));
+        });
+        *handle_for_effect.borrow_mut() = Some(interval);
+    });
+    // Dropped with the component: a timer that outlives its owner and writes a
+    // disposed signal panics the whole app.
+    let handle_for_cleanup = SendWrapper::new(handle);
+    on_cleanup(move || {
+        handle_for_cleanup.borrow_mut().take();
+    });
+
     let standing = LocalResource::new(move || {
+        tick.track();
         let client = api.get();
         async move {
             match client.get_account_standing().await {
