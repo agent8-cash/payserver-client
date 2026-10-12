@@ -32,11 +32,11 @@ fn notice(info: &AccountStandingInfo) -> Option<Notice> {
         .map(str::to_string);
     let message = match (lapsed, date) {
         (true, Some(d)) => format!(
-            "Your subscription lapsed (paid through {d}). New invoices are refused until it is renewed; payments to existing invoices still arrive."
+            "Your subscription lapsed (paid through {d} UTC). New invoices are refused until it is renewed; payments to existing invoices still arrive."
         ),
         (true, None) => "Your subscription has lapsed. New invoices are refused until it is renewed; payments to existing invoices still arrive.".to_string(),
         (false, Some(d)) => format!(
-            "Your subscription is paid through {d}. Renew before then to keep creating invoices."
+            "Your subscription is paid through {d} UTC. Renew before then to keep creating invoices."
         ),
         (false, None) => "Your subscription is close to lapsing. Renew to keep creating invoices.".to_string(),
     };
@@ -58,7 +58,19 @@ pub fn StandingBanner() -> impl IntoView {
     let api = use_context::<Signal<ApiClient>>().expect("ApiClient must be provided");
     let standing = LocalResource::new(move || {
         let client = api.get();
-        async move { client.get_account_standing().await.ok() }
+        async move {
+            match client.get_account_standing().await {
+                Ok(info) => Some(info),
+                Err(e) => {
+                    // Still silent in the UI, but not in the console: a failed
+                    // read is not the same answer as "all good".
+                    web_sys::console::warn_1(
+                        &format!("Could not read account standing: {e}").into(),
+                    );
+                    None
+                }
+            }
+        }
     });
 
     view! {

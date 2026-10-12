@@ -17,7 +17,7 @@
 use leptos::prelude::*;
 use serde_json::{Value, json};
 
-use crate::api::{ApiClient, UpdateStoreSettingsRequest};
+use crate::api::{ApiClient, ApiError, EmailStatus, UpdateStoreSettingsRequest};
 use crate::app::StoreContext;
 use crate::components::NoStoreSelected;
 
@@ -28,6 +28,57 @@ enum EmailChannel {
     Unused,
     /// The customer payment receipt, gated by [`CUSTOMER_RECEIPTS_KEY`].
     CustomerReceipt,
+}
+
+/// Shown when the server reports it cannot send email. Email preferences would
+/// save but never deliver, so the tab says so instead of offering them.
+const EMAIL_UNAVAILABLE_NOTICE: &str = "This server has no outgoing email configured, so no \
+     email notifications or receipts will be sent. Webhooks are unaffected.";
+
+/// Shown when the status question itself failed, so the tab cannot say either
+/// way. A failed answer is not a "configured" answer.
+const EMAIL_UNKNOWN_NOTICE: &str = "Could not check whether this server can send email. \
+     Email notifications and receipts may not be delivered.";
+
+/// What the tab knows about the server's outgoing email.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EmailAvailability {
+    /// The question is still in flight.
+    Checking,
+    Configured,
+    NotConfigured,
+    /// The question failed (network, auth, a server without the route).
+    Unknown,
+}
+
+impl EmailAvailability {
+    /// Map the server's answer to the status question. `None` is the request
+    /// still in flight; an error is never read as an answer.
+    fn from_status(answer: Option<&Result<EmailStatus, ApiError>>) -> Self {
+        match answer {
+            None => Self::Checking,
+            Some(Ok(s)) if s.configured => Self::Configured,
+            Some(Ok(_)) => Self::NotConfigured,
+            Some(Err(_)) => Self::Unknown,
+        }
+    }
+
+    /// Whether the email channel is drawn as a working control. Only a server
+    /// that has said it cannot send mail removes it; while the answer is
+    /// pending or failed the control stays, since hiding it on a guess would
+    /// break a working server.
+    fn channel_offered(self) -> bool {
+        self != Self::NotConfigured
+    }
+
+    /// The banner for this state, if any.
+    fn notice(self) -> Option<&'static str> {
+        match self {
+            Self::NotConfigured => Some(EMAIL_UNAVAILABLE_NOTICE),
+            Self::Unknown => Some(EMAIL_UNKNOWN_NOTICE),
+            Self::Checking | Self::Configured => None,
+        }
+    }
 }
 
 /// One row of the matrix.
@@ -141,6 +192,18 @@ pub fn NotificationsTab() -> impl IntoView {
         move |()| ctx.refetch_stores()
     });
 
+    let email_status = LocalResource::new(move || {
+        let api = api.get();
+        async move { api.get_email_status().await }
+    });
+    let email_configured = Signal::derive(move || {
+        let answer = email_status.get();
+        if let Some(Err(e)) = answer.as_deref() {
+            web_sys::console::warn_1(&format!("Could not check email status: {e}").into());
+        }
+        EmailAvailability::from_status(answer.as_deref())
+    });
+
     let (refresh, set_refresh) = signal(0u32);
     let settings = LocalResource::new(move || {
         let api = api.get();
@@ -237,6 +300,10 @@ pub fn NotificationsTab() -> impl IntoView {
                                  it does not stop the payment being processed."
                             </p>
 
+                            {move || email_configured.get().notice().map(|n| view! {
+                                <div class="form-alert form-alert-error">{n}</div>
+                            })}
+
                             <Suspense fallback=move || view! {
                                 <p class="text-muted">"Loading notification settings..."</p>
                             }>
@@ -256,7 +323,7 @@ pub fn NotificationsTab() -> impl IntoView {
                                             );
                                             set_loaded_store.set(Some(s.store_id.to_string()));
                                         }
-                                        view! { <NotificationMatrix cells receipts /> }.into_any()
+                                        view! { <NotificationMatrix cells receipts email_configured /> }.into_any()
                                     }
                                     Some(Err(e)) => {
                                         let msg = format!("Could not load notification settings: {e}");
@@ -304,6 +371,7 @@ pub fn NotificationsTab() -> impl IntoView {
 fn NotificationMatrix(
     cells: RwSignal<[bool; NOTIFICATION_EVENTS.len()]>,
     receipts: RwSignal<bool>,
+    email_configured: Signal<EmailAvailability>,
 ) -> impl IntoView {
     view! {
         <table class="notification-matrix">
@@ -326,19 +394,32 @@ fn NotificationMatrix(
                             </span>
                         }
                         .into_any(),
-                        EmailChannel::CustomerReceipt => view! {
-                            <label class="toggle">
-                                <input
-                                    type="checkbox"
-                                    prop:checked=move || receipts.get()
-                                    on:change=move |ev| {
-                                        receipts.set(event_target_checked(&ev));
-                                    }
-                                    title="Email a receipt to the customer when their payment confirms"
-                                />
-                                <span class="toggle-slider"></span>
-                            </label>
-                        }
+                        // Reactive: the status can land after the matrix does.
+                        EmailChannel::CustomerReceipt => (move || {
+                            if !email_configured.get().channel_offered() {
+                                view! {
+                                    <span class="text-muted" title=EMAIL_UNAVAILABLE_NOTICE>
+                                        "Unavailable"
+                                    </span>
+                                }
+                                .into_any()
+                            } else {
+                                view! {
+                                    <label class="toggle">
+                                        <input
+                                            type="checkbox"
+                                            prop:checked=move || receipts.get()
+                                            on:change=move |ev| {
+                                                receipts.set(event_target_checked(&ev));
+                                            }
+                                            title="Email a receipt to the customer when their payment confirms"
+                                        />
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                }
+                                .into_any()
+                            }
+                        })
                         .into_any(),
                     };
 
@@ -383,7 +464,60 @@ mod tests {
         CUSTOMER_RECEIPTS_KEY, NOTIFICATION_EVENTS, customer_receipts_enabled, read_matrix,
         webhook_enabled, write_matrix,
     };
+    use crate::api::{ApiError, EmailStatus};
     use serde_json::json;
+
+    #[test]
+    fn email_is_removed_only_when_the_server_says_it_cannot_send() {
+        use super::EmailAvailability::*;
+        assert!(Configured.channel_offered());
+        assert!(!NotConfigured.channel_offered());
+        assert!(Checking.channel_offered());
+        assert!(Unknown.channel_offered());
+    }
+
+    #[test]
+    fn the_servers_answer_maps_to_the_right_state() {
+        use super::EmailAvailability as A;
+        let ok = |configured| Ok(EmailStatus { configured });
+        assert_eq!(A::from_status(Some(&ok(true))), A::Configured);
+        assert_eq!(A::from_status(Some(&ok(false))), A::NotConfigured);
+        assert_eq!(A::from_status(None), A::Checking);
+        // A failure (a server without the route, a 401) is not "configured".
+        for e in [
+            ApiError::Unauthorized,
+            ApiError::Network("down".into()),
+            ApiError::Http {
+                status: 404,
+                message: "no route".into(),
+            },
+            ApiError::Parse("bad".into()),
+        ] {
+            assert_eq!(A::from_status(Some(&Err(e))), A::Unknown);
+        }
+    }
+
+    #[test]
+    fn each_state_says_what_it_knows() {
+        use super::EmailAvailability::*;
+        assert_eq!(Configured.notice(), None);
+        assert_eq!(Checking.notice(), None);
+        assert_eq!(
+            NotConfigured.notice(),
+            Some(super::EMAIL_UNAVAILABLE_NOTICE)
+        );
+        // A failed check is never silent: it must not read as "configured".
+        assert_eq!(Unknown.notice(), Some(super::EMAIL_UNKNOWN_NOTICE));
+    }
+
+    #[test]
+    fn the_status_body_parses_in_both_states() {
+        for want in [true, false] {
+            let body = format!(r#"{{"configured":{want}}}"#);
+            let s: crate::api::EmailStatus = serde_json::from_str(&body).unwrap();
+            assert_eq!(s.configured, want);
+        }
+    }
 
     #[test]
     fn an_unset_blob_reads_as_everything_on() {

@@ -155,7 +155,14 @@ fn OnboardingStep(done: bool, label: &'static str, href: &'static str) -> impl I
             <span class="onboarding-step-label">{label}</span>
             {(!done)
                 .then(|| view! {
-                    <A href=href attr:class="onboarding-step-action">"Go"</A>
+                    // The arrow carries no accessible name of its own, so the
+                    // step's label becomes the link's: a screen reader hears
+                    // "Create a store, link", not "link". The icon is marked
+                    // aria-hidden for the same reason - it would otherwise be
+                    // announced as a second, nameless child.
+                    <A href=href attr:class="onboarding-step-action" attr:aria-label=label>
+                        <IconArrowRight />
+                    </A>
                 })}
         </li>
     }
@@ -1098,6 +1105,16 @@ fn IconCheck() -> impl IntoView {
     view! {
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+    }
+}
+
+#[component]
+fn IconArrowRight() -> impl IntoView {
+    view! {
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+            <polyline points="12 5 19 12 12 19"></polyline>
         </svg>
     }
 }

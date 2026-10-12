@@ -30,10 +30,24 @@ pub struct SafeModeStatus {
     pub safe_mode: bool,
 }
 
+/// Whether the server can send outgoing email at all.
+///
+/// Local rather than in `api-types`: it is one flag from one route.
+#[derive(Debug, Clone, Deserialize)]
+pub struct EmailStatus {
+    pub configured: bool,
+}
+
 impl ApiClient {
     // =========================================================================
     // Auth / User
     // =========================================================================
+
+    /// Whether the server can send email, so the UI does not offer email
+    /// channels that would never deliver.
+    pub async fn get_email_status(&self) -> Result<EmailStatus, ApiError> {
+        self.get("/api/users/me/email/status").await
+    }
 
     /// Get the current authenticated user's info.
     pub async fn get_me(&self) -> Result<UserInfo, ApiError> {
@@ -235,6 +249,26 @@ mod tests {
             RequestSpec {
                 method: "GET",
                 path: "/api/admin/safe-mode".to_string(),
+                body: None,
+            }
+        );
+    }
+
+    #[test]
+    fn get_email_status_reads_the_configured_flag() {
+        let (transport, recorded) = recording_transport(serde_json::json!({
+            "configured": false,
+        }));
+        let client = ApiClient::with_test_transport("", transport);
+
+        let result = block_on(client.get_email_status());
+
+        assert!(!result.unwrap().configured);
+        assert_eq!(
+            recorded.lock().unwrap().clone().unwrap(),
+            RequestSpec {
+                method: "GET",
+                path: "/api/users/me/email/status".to_string(),
                 body: None,
             }
         );
