@@ -1153,6 +1153,15 @@ a:hover {
     color: var(--color-error);
 }
 
+.alert-warning {
+    background: var(--color-warning-light);
+    border: 1px solid var(--color-warning);
+}
+
+.alert-warning strong {
+    color: var(--color-warning);
+}
+
 .alert-success {
     background: color-mix(in srgb, var(--color-success) 10%, transparent);
     border: 1px solid var(--color-success);

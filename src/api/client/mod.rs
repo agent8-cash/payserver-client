@@ -60,6 +60,7 @@ mod health;
 mod invoices;
 mod payments;
 mod plugins;
+mod standing;
 mod stores;
 
 pub use admin::{EmailStatus, SafeModeStatus};
