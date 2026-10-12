@@ -13,7 +13,7 @@ use super::format::{format_date, payment_status, payment_status_class, truncate_
 use super::icons::{IconChevronRight, IconExport, IconExternalLink, IconMore, IconSearch};
 use std::collections::HashMap;
 
-use ui_kit::{CompactAmount, trim_amount, units_to_decimal};
+use ui_kit::{trim_amount, units_to_decimal};
 
 /// Payments list page.
 #[component]
@@ -354,8 +354,10 @@ pub fn PaymentsPage() -> impl IntoView {
 
                                 // Payment Cards (Mobile)
                                 <div class="payments-cards mobile-only">
-                                    {payments.into_iter().map(|payment| {
-                                        view! { <PaymentCard payment=payment show_store=show_store.get() /> }
+                                    {let scales = column_scales(&payments);
+                                    payments.into_iter().map(|payment| {
+                                        let scale = scales.get(&payment.asset_symbol).copied().unwrap_or(0);
+                                        view! { <PaymentCard payment=payment show_store=show_store.get() scale=scale /> }
                                     }).collect_view()}
                                 </div>
 
@@ -406,7 +408,7 @@ fn store_label(payment: &Payment) -> String {
 /// `0.0₄85129` cannot be compared down the page. The table shows every amount
 /// of an asset as a plain literal at the widest scale on the page instead, so
 /// the digits line up; subscript compression stays on the single-value
-/// summaries (cards, dashboard) where there is nothing to compare against.
+/// summaries (dashboard) where there is nothing to compare against.
 fn column_scales(payments: &[Payment]) -> HashMap<String, usize> {
     let mut scales = HashMap::new();
     for payment in payments {
@@ -486,9 +488,11 @@ fn PaymentRow(payment: Payment, show_store: bool, scale: usize) -> impl IntoView
 
 /// Mobile payment card component.
 ///
-/// `show_store` behaves as on [`PaymentRow`].
+/// `show_store` and `scale` behave as on [`PaymentRow`]: the cards are a
+/// stacked set, so they share the table's per-asset scale rather than each
+/// deciding its own notation.
 #[component]
-fn PaymentCard(payment: Payment, show_store: bool) -> impl IntoView {
+fn PaymentCard(payment: Payment, show_store: bool, scale: usize) -> impl IntoView {
     let store_display = show_store.then(|| store_label(&payment));
     let tx_display = truncate_hash(&payment.tx_hash, 8, 6);
     let network = chain_name(&payment.chain_id).to_string();
@@ -500,13 +504,15 @@ fn PaymentCard(payment: Payment, show_store: bool) -> impl IntoView {
     let payment_link = payment.id.clone();
     let amount_decimal = units_to_decimal(&payment.amount, payment.decimals);
     let asset_symbol = payment.asset_symbol.clone();
+    let exact = format!("{} {asset_symbol}", trim_amount(&amount_decimal, 0));
+    let padded = format!("{} {asset_symbol}", trim_amount(&amount_decimal, scale));
 
     view! {
         <div class="payment-card">
             <div class="payment-card-header">
                 <div class="payment-card-amount">
-                    <span class="payment-card-amount-value">
-                        <CompactAmount value=amount_decimal symbol=asset_symbol />
+                    <span class="payment-card-amount-value" title=exact.clone() aria-label=exact>
+                        {padded}
                     </span>
                     <span class="payment-card-network">{network}</span>
                 </div>
