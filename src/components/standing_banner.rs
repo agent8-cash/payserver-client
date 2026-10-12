@@ -10,13 +10,16 @@ use std::rc::Rc;
 
 use leptos::prelude::*;
 use send_wrapper::SendWrapper;
+use wasm_bindgen::JsCast;
+use wasm_bindgen::closure::Closure;
 
 use crate::api::{AccountStandingInfo, ApiClient, StandingState};
 
 /// How often the standing is read again, in milliseconds. The shell outlives
 /// every route, so a single read would show a stale remedy link for as long as
 /// the tab stays open, and would go on saying "lapsed" after the merchant has
-/// paid. Well inside the lifetime of a freshly issued invoice.
+/// paid. A tab that was hidden is read again the moment it is shown, so the
+/// interval is not what keeps a returning merchant's link fresh.
 const REFRESH_MS: u32 = 60_000;
 
 /// What to say, separated from rendering so it can be tested.
@@ -42,13 +45,18 @@ fn notice(info: &AccountStandingInfo) -> Option<Notice> {
         .map(str::to_string);
     let message = match (lapsed, date) {
         (true, Some(d)) => format!(
-            "Your subscription lapsed (paid through {d} UTC). New invoices are refused until it is renewed; payments to existing invoices still arrive."
+            "Your subscription lapsed (paid through {d} UTC). New invoices are refused until it is renewed."
         ),
-        (true, None) => "Your subscription has lapsed. New invoices are refused until it is renewed; payments to existing invoices still arrive.".to_string(),
+        (true, None) => {
+            "Your subscription has lapsed. New invoices are refused until it is renewed."
+                .to_string()
+        }
         (false, Some(d)) => format!(
             "Your subscription is paid through {d} UTC. Renew before then to keep creating invoices."
         ),
-        (false, None) => "Your subscription is close to lapsing. Renew to keep creating invoices.".to_string(),
+        (false, None) => {
+            "Your subscription is close to lapsing. Renew to keep creating invoices.".to_string()
+        }
     };
     let link = info
         .checkout_url
@@ -59,6 +67,16 @@ fn notice(info: &AccountStandingInfo) -> Option<Notice> {
         lapsed,
         message,
         link,
+    })
+}
+
+/// What stays on screen after a read failed: the warning, but not the link. A
+/// remedy link is only as good as the read that produced it, and a link kept
+/// across a long outage may point at something that has since expired.
+fn after_failed_read(previous: Option<AccountStandingInfo>) -> Option<AccountStandingInfo> {
+    previous.map(|mut p| {
+        p.checkout_url = None;
+        p
     })
 }
 
@@ -82,8 +100,36 @@ pub fn StandingBanner() -> impl IntoView {
         handle_for_cleanup.borrow_mut().take();
     });
 
-    // The last answer that was read. A failed read leaves it alone: a lapse
-    // warning must not vanish because one poll hit a network blip.
+    // Read again as soon as the tab is shown: a hidden tab skips its reads, so
+    // a merchant returning after a long absence would otherwise see the old
+    // answer, and its link, until the next tick.
+    let listener: Rc<RefCell<Option<Closure<dyn FnMut()>>>> = Rc::new(RefCell::new(None));
+    if let Some(document) = web_sys::window().and_then(|w| w.document()) {
+        let doc = document.clone();
+        let closure = Closure::<dyn FnMut()>::new(move || {
+            if !doc.hidden() {
+                set_tick.update(|n| *n = n.wrapping_add(1));
+            }
+        });
+        let _ = document
+            .add_event_listener_with_callback("visibilitychange", closure.as_ref().unchecked_ref());
+        *listener.borrow_mut() = Some(closure);
+    }
+    let listener_for_cleanup = SendWrapper::new(listener);
+    on_cleanup(move || {
+        if let Some(closure) = listener_for_cleanup.borrow_mut().take()
+            && let Some(document) = web_sys::window().and_then(|w| w.document())
+        {
+            let _ = document.remove_event_listener_with_callback(
+                "visibilitychange",
+                closure.as_ref().unchecked_ref(),
+            );
+        }
+    });
+
+    // The last answer that was read. A failed read keeps the warning, minus
+    // its link: a lapse warning must not vanish because one poll hit a network
+    // blip, but a link must not outlive the read that vouched for it.
     let (current, set_current) = signal(None::<AccountStandingInfo>);
     Effect::new(move |_| {
         tick.track();
@@ -99,6 +145,7 @@ pub fn StandingBanner() -> impl IntoView {
             match client.get_account_standing().await {
                 Ok(info) => set_current.set(Some(info)),
                 Err(e) => {
+                    set_current.update(|c| *c = after_failed_read(c.take()));
                     // Still silent in the UI, but not in the console.
                     web_sys::console::warn_1(
                         &format!("Could not read account standing: {e}").into(),
@@ -161,6 +208,28 @@ mod tests {
         let n = notice(&info(StandingState::Lapsed, Some("https://pay.example/c"))).unwrap();
         assert!(n.lapsed);
         assert_eq!(n.link.as_deref(), Some("https://pay.example/c"));
+    }
+
+    #[test]
+    fn a_failed_read_keeps_the_warning_but_drops_the_link() {
+        let kept = after_failed_read(Some(info(
+            StandingState::Lapsed,
+            Some("https://pay.example/c"),
+        )))
+        .unwrap();
+        assert_eq!(kept.state, StandingState::Lapsed);
+        assert_eq!(kept.checkout_url, None);
+        assert!(notice(&kept).unwrap().lapsed);
+        assert_eq!(after_failed_read(None), None);
+    }
+
+    #[test]
+    fn lapsed_without_a_date_still_says_so() {
+        let mut i = info(StandingState::Lapsed, Some("https://pay.example/c"));
+        i.paid_through = None;
+        let n = notice(&i).unwrap();
+        assert!(n.lapsed && n.message.contains("renewed"), "{}", n.message);
+        assert!(n.link.is_some());
     }
 
     #[test]
