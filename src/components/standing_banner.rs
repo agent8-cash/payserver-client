@@ -164,7 +164,7 @@ pub fn StandingBanner() -> impl IntoView {
                 .map(|n| {
                     let class = if n.lapsed { "alert alert-error" } else { "alert alert-warning" };
                     view! {
-                        <div role="status" class=class>
+                        <div class=class role="status">
                             <strong>{if n.lapsed { "Subscription lapsed" } else { "Subscription ending soon" }}</strong>
                             <p>{n.message}</p>
                             {n.link.map(|href| view! {
