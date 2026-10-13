@@ -26,6 +26,14 @@ fn router_routes(src: &str) -> BTreeSet<String> {
         if line.starts_with("//") {
             continue;
         }
+        // A line that declares a path but is not a recognised one-line route
+        // would otherwise vanish from the router side and let a deleted list
+        // entry read as in sync. Refuse it instead of skipping it.
+        if line.contains("path!(")
+            && !(line.starts_with("<Route ") || line.starts_with("<ParentRoute "))
+        {
+            panic!("unrecognised route declaration (split over lines?): {line}");
+        }
         if line.starts_with("</ParentRoute") {
             stack.pop();
         } else if line.starts_with("<ParentRoute") {
@@ -73,6 +81,12 @@ fn route_list_matches_the_router() {
         unlisted.is_empty() && stale.is_empty(),
         "e2e-routes.txt and the router disagree.\n  in router, not in list: {unlisted:?}\n  in list, not in router: {stale:?}"
     );
+}
+
+#[test]
+#[should_panic(expected = "unrecognised route declaration")]
+fn a_route_split_over_lines_is_refused_not_skipped() {
+    router_routes("<Route\n    path=path!(\"/a\")\n    view=A\n/>");
 }
 
 #[test]
