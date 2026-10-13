@@ -133,11 +133,11 @@ pub fn SettingsTab(store_id: String) -> impl IntoView {
 
             <form on:submit=on_save>
                 // General section
-                <div class="settings-section">
-                    <h3 class="settings-section-title">"General"</h3>
+                <div class="card card-body">
+                    <h3 class="card-title">"General"</h3>
                     <div class="form-group">
-                        <label for="chain_id">"Default Chain"</label>
-                        <select id="chain_id"
+                        <label class="form-label" for="chain_id">"Default Chain"</label>
+                        <select id="chain_id" class="form-input form-select"
                             prop:value=move || chain_id.get()
                             on:change=move |ev| set_chain_id.set(event_target_value(&ev))
                         >
@@ -154,8 +154,8 @@ pub fn SettingsTab(store_id: String) -> impl IntoView {
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="display_currency">"Default Display Currency"</label>
-                        <select id="display_currency"
+                        <label class="form-label" for="display_currency">"Default Display Currency"</label>
+                        <select id="display_currency" class="form-input form-select"
                             prop:value=move || display_currency.get()
                             on:change=move |ev| set_display_currency.set(event_target_value(&ev))
                         >
@@ -170,32 +170,32 @@ pub fn SettingsTab(store_id: String) -> impl IntoView {
                 </div>
 
                 // Branding section
-                <div class="settings-section">
-                    <h3 class="settings-section-title">"Branding"</h3>
+                <div class="card card-body">
+                    <h3 class="card-title">"Branding"</h3>
                     <div class="form-group">
-                        <label for="logo_url">"Logo URL"</label>
-                        <input type="url" id="logo_url" placeholder="https://example.com/logo.png"
+                        <label class="form-label" for="logo_url">"Logo URL"</label>
+                        <input type="url" id="logo_url" class="form-input" placeholder="https://example.com/logo.png"
                             prop:value=move || logo_url.get()
                             on:input=move |ev| set_logo_url.set(event_target_value(&ev))
                         />
-                        <small class="form-hint">"Must be HTTPS. Displayed on checkout page."</small>
+                        <small class="form-help">"Must be HTTPS. Displayed on checkout page."</small>
                     </div>
                     <div class="form-group">
-                        <label for="accent_color">"Accent Color"</label>
+                        <label class="form-label" for="accent_color">"Accent Color"</label>
                         <div class="color-input-row">
-                            <input type="color"
+                            <input type="color" class="color-swatch"
                                 prop:value=move || {
                                     let c = accent_color.get();
                                     if c.is_empty() { "#6366f1".to_string() } else { c }
                                 }
                                 on:input=move |ev| set_accent_color.set(event_target_value(&ev))
                             />
-                            <input type="text" id="accent_color" placeholder="#6366f1" maxlength="7"
+                            <input type="text" id="accent_color" class="form-input" placeholder="#6366f1" maxlength="7"
                                 prop:value=move || accent_color.get()
                                 on:input=move |ev| set_accent_color.set(event_target_value(&ev))
                             />
                         </div>
-                        <small class="form-hint">"Hex color for checkout button and header accent."</small>
+                        <small class="form-help">"Hex color for checkout button and header accent."</small>
                     </div>
                     {move || {
                         let logo = logo_url.get();
@@ -217,45 +217,45 @@ pub fn SettingsTab(store_id: String) -> impl IntoView {
                 </div>
 
                 // Notifications section
-                <div class="settings-section">
-                    <h3 class="settings-section-title">"Notifications"</h3>
-                    <p class="settings-section-desc">"Control which events trigger webhook delivery."</p>
-                    <div class="notification-matrix">
-                        <div class="notification-row">
-                            <label>"Payment Detected"</label>
+                <div class="card card-body">
+                    <h3 class="card-title">"Notifications"</h3>
+                    <p class="card-subtitle">"Control which events trigger webhook delivery."</p>
+                    <div class="notification-list">
+                        <label class="checkbox-label">
                             <input type="checkbox"
                                 prop:checked=move || wh_payment_detected.get()
                                 on:change=move |ev| set_wh_payment_detected.set(event_target_checked(&ev))
                             />
-                        </div>
-                        <div class="notification-row">
-                            <label>"Payment Confirmed"</label>
+                            <span>"Payment Detected"</span>
+                        </label>
+                        <label class="checkbox-label">
                             <input type="checkbox"
                                 prop:checked=move || wh_payment_confirmed.get()
                                 on:change=move |ev| set_wh_payment_confirmed.set(event_target_checked(&ev))
                             />
-                        </div>
-                        <div class="notification-row">
-                            <label>"Invoice Expired"</label>
+                            <span>"Payment Confirmed"</span>
+                        </label>
+                        <label class="checkbox-label">
                             <input type="checkbox"
                                 prop:checked=move || wh_invoice_expired.get()
                                 on:change=move |ev| set_wh_invoice_expired.set(event_target_checked(&ev))
                             />
-                        </div>
-                        <div class="notification-row">
-                            <label>"Invoice Cancelled"</label>
+                            <span>"Invoice Expired"</span>
+                        </label>
+                        <label class="checkbox-label">
                             <input type="checkbox"
                                 prop:checked=move || wh_invoice_cancelled.get()
                                 on:change=move |ev| set_wh_invoice_cancelled.set(event_target_checked(&ev))
                             />
-                        </div>
-                        <div class="notification-row">
-                            <label>"Late Payment"</label>
+                            <span>"Invoice Cancelled"</span>
+                        </label>
+                        <label class="checkbox-label">
                             <input type="checkbox"
                                 prop:checked=move || wh_late_paid.get()
                                 on:change=move |ev| set_wh_late_paid.set(event_target_checked(&ev))
                             />
-                        </div>
+                            <span>"Late Payment"</span>
+                        </label>
                     </div>
                 </div>
 
@@ -417,9 +417,9 @@ fn TokenPolicyPanel(store_id: String) -> impl IntoView {
     };
 
     view! {
-        <div class="settings-section" style="margin-top: 1.5rem;">
-            <h3 class="settings-section-title">"Token Policy"</h3>
-            <p class="settings-section-desc">
+        <div class="card card-body">
+            <h3 class="card-title">"Token Policy"</h3>
+            <p class="card-subtitle">
                 "Control which chain+token pairs this store accepts for payments."
             </p>
 
@@ -434,8 +434,8 @@ fn TokenPolicyPanel(store_id: String) -> impl IntoView {
             </Suspense>
 
             <div class="form-group">
-                <label>"Mode"</label>
-                <select
+                <label class="form-label" for="policy_mode">"Mode"</label>
+                <select id="policy_mode" class="form-input form-select"
                     prop:value=move || mode.get()
                     on:change=move |ev| set_mode.set(event_target_value(&ev))
                 >
@@ -445,8 +445,8 @@ fn TokenPolicyPanel(store_id: String) -> impl IntoView {
             </div>
 
             // Entries table
-            <div class="notification-matrix" style="margin-top: 0.75rem;">
-                <div class="notification-row" style="font-weight: 600;">
+            <div class="policy-table">
+                <div class="policy-row policy-row-head">
                     <span style="flex: 1;">"Chain ID"</span>
                     <span style="flex: 2;">"Token Address"</span>
                     <span style="flex: 1;">"Symbol"</span>
@@ -464,7 +464,7 @@ fn TokenPolicyPanel(store_id: String) -> impl IntoView {
                             });
                         };
                         view! {
-                            <div class="notification-row">
+                            <div class="policy-row">
                                 <span style="flex: 1;">{entry.chain_id.to_string()}</span>
                                 <span style="flex: 2; font-family: monospace; font-size: 0.8rem;">
                                     {entry.token_address.clone().unwrap_or_else(|| "(native)".to_string())}
@@ -478,14 +478,14 @@ fn TokenPolicyPanel(store_id: String) -> impl IntoView {
             </div>
 
             // Add entry form
-            <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem; align-items: flex-end;">
+            <div class="policy-add">
                 <div style="flex: 1;">
-                    <label style="font-size: 0.75rem;">"Chain ID"</label>
-                    <input type="number" placeholder="1"
+                    <label class="form-label">"Chain ID"</label>
+                    <input type="number" class="form-input" placeholder="1"
                         prop:value=move || new_chain_id.get()
                         on:input=move |ev| set_new_chain_id.set(event_target_value(&ev))
                     />
-                    <span style="font-size: 0.7rem; color: var(--text-muted);">
+                    <span class="form-help">
                         {move || {
                             let raw = new_chain_id.get();
                             ChainId::parse(raw.trim())
@@ -497,15 +497,15 @@ fn TokenPolicyPanel(store_id: String) -> impl IntoView {
                     </span>
                 </div>
                 <div style="flex: 2;">
-                    <label style="font-size: 0.75rem;">"Token Address"</label>
-                    <input type="text" placeholder="0x... (empty for native)"
+                    <label class="form-label">"Token Address"</label>
+                    <input type="text" class="form-input" placeholder="0x... (empty for native)"
                         prop:value=move || new_token_address.get()
                         on:input=move |ev| set_new_token_address.set(event_target_value(&ev))
                     />
                 </div>
                 <div style="flex: 1;">
-                    <label style="font-size: 0.75rem;">"Symbol"</label>
-                    <input type="text" placeholder="USDC"
+                    <label class="form-label">"Symbol"</label>
+                    <input type="text" class="form-input" placeholder="USDC"
                         prop:value=move || new_asset_symbol.get()
                         on:input=move |ev| set_new_asset_symbol.set(event_target_value(&ev))
                     />
@@ -520,7 +520,7 @@ fn TokenPolicyPanel(store_id: String) -> impl IntoView {
                 <div class="alert alert-success" style="margin-top: 0.5rem;">"Token policy saved."</div>
             })}
 
-            <div class="form-actions" style="margin-top: 0.75rem;">
+            <div class="form-actions">
                 <button type="button" class="ps-btn ps-btn-primary"
                     disabled=move || saving.get()
                     on:click=on_save

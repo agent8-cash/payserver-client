@@ -3,9 +3,7 @@
 # could be switched on without fixing all of them at once; it is
 # meant to shrink. Do not add to it to make a build pass.
 # Regenerate: scripts/check-classes-styled.py --update-baseline
-branding-preview
 chart-card-main
-color-input-row
 data-table
 date-cell
 detail-value-mono
@@ -20,7 +18,6 @@ evm-not-found-code
 evm-not-found-content
 evm-not-found-message
 evm-not-found-title
-form-hint
 form-input-sm
 form-status
 invoice-received
@@ -33,10 +30,6 @@ loading-state
 loading-text
 loading-text-sm
 locked
-notification-row
-settings-section
-settings-section-desc
-settings-section-title
 settings-tab-icon
 status
 store-card-date
