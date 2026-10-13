@@ -3,25 +3,6 @@
 # could be switched on without fixing all of them at once; it is
 # meant to shrink. Do not add to it to make a build pass.
 # Regenerate: scripts/check-classes-styled.py --update-baseline
-chart-card-main
-data-table
-date-cell
-detail-value-mono
-error-container
-error-icon
-error-message
-error-state
-evm-amount-details
-evm-chain-info
-evm-not-found
-evm-not-found-code
-evm-not-found-content
-evm-not-found-message
-evm-not-found-title
-form-input-sm
-form-status
-invoice-received
-invoice-row
 loading-container
 loading-inline
 loading-spinner
@@ -29,16 +10,3 @@ loading-spinner-sm
 loading-state
 loading-text
 loading-text-sm
-locked
-settings-tab-icon
-status
-store-card-date
-stores-empty
-stores-error
-stores-loading
-tx-hash-search
-tx-search-error
-user-cell
-user-name
-user-row
-wallet-card-title
