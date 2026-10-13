@@ -7063,3 +7063,182 @@ tr.payment-row {
 .policy-add > div {
     min-width: 0;
 }
+
+/* ============================================
+   Error states
+   ============================================ */
+.error-container,
+.error-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    padding: var(--space-12) var(--space-6);
+    text-align: center;
+    color: var(--color-error);
+}
+
+.error-state {
+    background: var(--color-error-light);
+    border-radius: var(--border-radius-md);
+    font-size: var(--text-sm);
+}
+
+.error-icon {
+    display: flex;
+    color: var(--color-error);
+}
+
+.error-message {
+    margin: 0;
+    max-width: 480px;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
+/* ============================================
+   404 page
+   ============================================ */
+.evm-not-found {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+}
+
+.evm-not-found-content {
+    text-align: center;
+    padding: var(--space-8);
+}
+
+.evm-not-found-code {
+    margin: 0;
+    font-size: 5rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text-muted);
+}
+
+.evm-not-found-title {
+    margin: var(--space-4) 0;
+    font-size: 1.5rem;
+    color: var(--text-primary);
+}
+
+.evm-not-found-message {
+    margin: 0 0 var(--space-6);
+    color: var(--text-muted);
+}
+
+/* ============================================
+   Stores list states
+   ============================================ */
+.stores-loading,
+.stores-empty,
+.stores-error {
+    text-align: center;
+    padding: var(--space-12);
+}
+
+.stores-loading {
+    color: var(--text-muted);
+}
+
+.stores-error {
+    color: var(--color-error);
+}
+
+.store-card-date {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+/* ============================================
+   Admin user table
+   ============================================ */
+.data-table {
+    table-layout: auto;
+}
+
+.user-row.locked {
+    background: var(--color-warning-light);
+}
+
+.user-cell {
+    white-space: nowrap;
+}
+
+.user-name {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.date-cell {
+    white-space: nowrap;
+    color: var(--text-muted);
+}
+
+.form-input-sm {
+    width: auto;
+    padding: var(--space-1) var(--space-2);
+}
+
+.form-status {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+/* ============================================
+   Invoices, payments, wallets, dashboard, EVM
+   ============================================ */
+.invoice-row {
+    cursor: default;
+}
+
+.invoice-received {
+    font-weight: 500;
+    color: var(--color-success);
+}
+
+.tx-hash-search {
+    position: relative;
+}
+
+.tx-search-error {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: var(--space-1);
+    font-size: var(--text-xs);
+    color: var(--color-error);
+}
+
+.detail-value-mono {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    word-break: break-all;
+}
+
+.wallet-card-title {
+    min-width: 0;
+}
+
+.chart-card-main {
+    min-width: 0;
+}
+
+.settings-tab-icon {
+    flex-shrink: 0;
+    margin-right: var(--space-1);
+    vertical-align: -2px;
+}
+
+.evm-amount-details {
+    margin-top: var(--space-1);
+}
+
+.evm-chain-info {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}

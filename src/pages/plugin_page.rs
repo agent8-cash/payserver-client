@@ -128,7 +128,7 @@ fn render(element: &PageElement) -> AnyView {
         }
 
         PageElement::Notice(Notice { text, tone }) => view! {
-            <div class=notice_class(*tone) role="status">{text.clone()}</div>
+            <div role="status" class=notice_class(*tone)>{text.clone()}</div>
         }
         .into_any(),
 
