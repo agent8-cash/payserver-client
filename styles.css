@@ -7157,8 +7157,8 @@ tr.payment-row {
 /* ============================================
    Admin user table
    ============================================ */
-.data-table {
-    table-layout: auto;
+.data-table td {
+    vertical-align: middle;
 }
 
 .user-row.locked {
@@ -7192,8 +7192,10 @@ tr.payment-row {
 /* ============================================
    Invoices, payments, wallets, dashboard, EVM
    ============================================ */
-.invoice-row {
-    cursor: default;
+/* Cells hold stacked content (id over order id), so centre rather than
+   baseline-align against the single-line cells beside them. */
+.invoice-row td {
+    vertical-align: middle;
 }
 
 .invoice-received {
@@ -7220,10 +7222,21 @@ tr.payment-row {
     word-break: break-all;
 }
 
+/* Flex child of .wallet-card-header: take the remaining width and let a long
+   wallet name truncate instead of pushing the card wider. */
 .wallet-card-title {
+    flex: 1;
     min-width: 0;
 }
 
+.wallet-card-title .wallet-card-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Grid item of .charts-section (2fr 1fr): without min-width 0 the chart's
+   intrinsic width stretches the 2fr track and squeezes the side card. */
 .chart-card-main {
     min-width: 0;
 }
