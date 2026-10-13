@@ -84,11 +84,6 @@ def class_attribute_values(line: str) -> list[str]:
             if end > 0:
                 out.append(rest[1:end])
         else:
-            # An expression ends where the next attribute begins: otherwise
-            # `class=cls role="status"` reads "status" as a class.
-            nxt = re.search(r'\s[A-Za-z_:][\w:-]*="', rest)
-            if nxt:
-                rest = rest[:nxt.start()]
             out.extend(re.findall(r'"([^"\n]*)"', rest))
     return out
 
