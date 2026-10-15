@@ -79,6 +79,12 @@ jobs:
       - name: Every class in the markup has a rule
         run: python3 scripts/check-classes-styled.py
 
+      # A rule written for a nav button landed on a whole panel because both
+      # used one class name, and the presence check above passed throughout:
+      # the class had a rule, it just belonged to something else.
+      - name: No class serves both a control and a container
+        run: python3 scripts/check-class-roles.py
+
       # The bundle is what ships, and it is the only configuration where
       # `web-sys` is not a stub. A crate that lints clean on the host can still
       # fail to build for the browser.

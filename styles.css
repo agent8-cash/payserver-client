@@ -5220,7 +5220,7 @@ tr.payment-row {
 .settings-tab-preferences,
 .settings-tab-api-keys,
 .settings-tab-notifications,
-.settings-tab-admin {
+.settings-admin-panel {
     display: flex;
     flex-direction: column;
     gap: var(--space-6);
