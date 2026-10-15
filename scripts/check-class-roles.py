@@ -14,7 +14,8 @@ This flags any class that appears on a leaf control (`button`, `a`, `input`,
 ones whose attributes span lines. A class chosen by a helper function has no
 literal to read and is not seen.
 
-Usage: scripts/check-class-roles.py   (exits non-zero on a mixed-role class)
+Usage: scripts/check-class-roles.py              (exits non-zero on a mixed-role class)
+       scripts/check-class-roles.py --self-test  (proves it flags the original collision)
 """
 
 from __future__ import annotations
@@ -30,7 +31,8 @@ CONTROLS = {"button", "a", "input", "select", "textarea", "label"}
 CONTAINERS = {"div", "section", "main", "form", "article", "aside", "nav", "ul", "ol", "header", "footer"}
 
 TAG_OPEN = re.compile(r"<([a-z][a-z0-9]*)\b")
-NEXT_ATTR = re.compile(r"\n\s*(?:on:|prop:|attr:|style|id|type|disabled|title|href|value|placeholder)[\w:-]*=")
+# Any attribute that starts a line ends a multi-line class value.
+NEXT_ATTR = re.compile(r"\n\s*[a-z][\w:-]*=(?!=)")
 
 
 def class_literals(window: str) -> list[str]:
@@ -85,11 +87,45 @@ def find_mixed(files: dict[str, str]) -> dict[str, dict[str, list[str]]]:
     return {c: r for c, r in merged.items() if r["control"] and r["container"]}
 
 
+# The shape of the original collision: a multi-line nav button class closure
+# followed by an attribute outside any fixed list, and a panel div with the
+# same name.
+BAD_BUTTON = """
+<button
+    class=move || {
+        if a < b { "settings-tab active".to_string() } else { "settings-tab".to_string() }
+    }
+    role="tab"
+    on:click=f
+>
+"""
+BAD_PANEL = '<div class="settings-tab"><p>x</p></div>'
+
+
+def self_test() -> int:
+    bad = find_mixed({"nav.rs": BAD_BUTTON, "panel.rs": BAD_PANEL})
+    if "settings-tab" not in bad:
+        print("self-test failed: the original collision was not flagged", file=sys.stderr)
+        return 1
+    ok = find_mixed({"nav.rs": BAD_BUTTON, "panel.rs": BAD_PANEL.replace("settings-tab", "store-settings")})
+    if ok:
+        print(f"self-test failed: false positive {sorted(ok)}", file=sys.stderr)
+        return 1
+    print("self-test ok: flags the original collision, clean once renamed")
+    return 0
+
+
 def main() -> int:
-    names = subprocess.run(
+    if "--self-test" in sys.argv:
+        return self_test()
+    grep = subprocess.run(
         ["git", "grep", "-l", "class=", "--", "src/"],
         cwd=REPO, capture_output=True, text=True, check=False,
-    ).stdout.split()
+    )
+    names = grep.stdout.split()
+    if grep.returncode != 0 or not names:
+        print(f"scanned nothing (git grep exit {grep.returncode}): {grep.stderr.strip()}", file=sys.stderr)
+        return 2
     mixed = find_mixed({f: (REPO / f).read_text() for f in names})
     if not mixed:
         print("no class is used as both a control and a container")
