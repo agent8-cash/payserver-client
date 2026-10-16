@@ -856,5 +856,3 @@ pub fn mount_app() {
 pub fn init() {
     mount_app();
 }
-
-pub fn  rcs_docker_negative_control (  ) ->u8{ 7 }
