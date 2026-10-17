@@ -1,0 +1,186 @@
+# Forgejo copy of .github/workflows/ci.yml - the GATE only.
+#
+# Four of the five jobs are here. `publish` is deliberately NOT ported and still
+# runs on GitHub:
+#   - it runs `docker build` and `docker push`, and rcs-docker has the docker CLI
+#     but no reachable daemon (unprivileged, no socket - measured, and by design);
+#   - it signs images with keyless cosign, which proves identity with a GitHub
+#     OIDC token. Forgejo issues no such token, so keyless signing cannot work
+#     here at all - it would need a stored key, which is the thing keyless exists
+#     to avoid.
+# Both need a different runner profile, the same conversation as
+# central-infrastructure's docker-compose steps. Until then the image is still
+# built and signed on GitHub, reached through the mirror of the default branch.
+#
+# Forgejo reads only .forgejo/workflows once it exists and GitHub reads only
+# .github/workflows, so these coexist and neither platform runs twice. The uses:
+# lines carry full URLs where the action is not published on code.forgejo.org -
+# a form GitHub rejects, which is why this is a copy and not a move.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+env:
+  CARGO_TERM_COLOR: always
+  REGISTRY: ghcr.io
+  IMAGE: ghcr.io/${{ github.repository }}
+
+# A frontend deploy is a tag move on a registry, so two merges landing close
+# together can publish out of order and leave `latest` pointing at the older
+# bundle. Serialise per ref rather than trying to detect it after the fact.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: rcs-docker
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # This repository is public. A ticket id in a source file leaks the
+      # title and shape of unreleased work, and an outside reader cannot open
+      # the tracker anyway. Ticket ids belong in the commit message and PR
+      # title, not the tree - see CLAUDE.md.
+      - name: No ticket ids or tracker links in source
+        run: ./scripts/check-no-ticket-refs.sh
+
+      - uses: https://github.com/dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+      - uses: https://github.com/Swatinem/rust-cache@v2
+
+      # A committed Cargo.lock that does not carry the pinned revision means
+      # someone ran `scripts/commons.sh link` and committed the result. That
+      # silently un-pins commons for everyone and it looks like nothing.
+      - name: Commons pin matches the lock file
+        run: |
+          REV="$(grep -m1 -oP 'rev = "\K[0-9a-f]{40}' Cargo.toml)"
+          if [ -z "$REV" ]; then
+            echo "::error::no payserver-commons rev pinned in Cargo.toml"
+            exit 1
+          fi
+          # Per crate, and the crate name has to be in the match. Grepping only
+          # for the revision proves that SOME entry is pinned, which a partial
+          # un-pin passes: `types` pinned, `ui-kit` left as a path entry, green.
+          for CRATE in api-types scrub types ui-kit; do
+            if ! awk -v c="$CRATE" -v r="$REV" '
+                 /^\[\[package\]\]/ { name=""; src="" }
+                 /^name = / { gsub(/[",]/,""); name=$3 }
+                 /^source = / { src=$0 }
+                 name == c && src ~ r { found=1 }
+                 END { exit !found }' Cargo.lock; then
+              echo "::error::Cargo.lock does not pin $CRATE at $REV."
+              echo "Run 'scripts/commons.sh unlink' and commit the regenerated Cargo.lock."
+              exit 1
+            fi
+          done
+          echo "commons pinned at $REV in both Cargo.toml and Cargo.lock"
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      # A renamed class whose rule stayed behind renders with no styling, and
+      # nothing else here notices: the layout suite asserts geometry rather than
+      # colour, and e2e locates elements by class, which still match - unstyled.
+      # That shipped once, stripping 104 buttons of their styling on testnet.
+      - name: Every class in the markup has a rule
+        run: python3 scripts/check-classes-styled.py
+
+      # The bundle is what ships, and it is the only configuration where
+      # `web-sys` is not a stub. A crate that lints clean on the host can still
+      # fail to build for the browser.
+      - name: Check wasm32 target
+        run: cargo check --target wasm32-unknown-unknown
+
+  test:
+    name: Test
+    runs-on: rcs-docker
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: https://github.com/dtolnay/rust-toolchain@stable
+      - uses: https://github.com/Swatinem/rust-cache@v2
+      - name: Test
+        run: cargo test --all-targets
+
+  layout:
+    name: Layout
+    runs-on: rcs-docker
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      # styles.css layers two design systems across 5000+ lines, so it holds
+      # pairs of rules with identical specificity where the later one wins by
+      # source order alone. That has produced three user-visible bugs, none of
+      # which could fail a normal test: the app compiles, renders, and is simply
+      # wrong. These inject the stylesheet into a blank page and assert computed
+      # style - no server, no auth, milliseconds.
+      #
+      # They ran in ethpayserver's E2E suite until the split. They belong here:
+      # a CSS regression should fail the repository that owns the CSS.
+      - name: Layout regressions
+        run: npx playwright test
+
+  build:
+    name: Build bundle
+    runs-on: rcs-docker
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: https://github.com/dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: https://github.com/Swatinem/rust-cache@v2
+
+      - name: Install trunk
+        run: cargo install trunk --locked
+
+      - name: Build
+        run: trunk build --release
+
+      # The image is built from dist/, so this checks what is actually served
+      # rather than what the repository holds.
+      - name: Favicon and title are in the bundle
+        run: |
+          for f in favicon.svg favicon.png favicon.ico; do
+            test -s "dist/$f" || { echo "::error::dist/$f missing"; exit 1; }
+          done
+          grep -q '<title>Random Cash</title>' dist/index.html
+
+      # The whole reason this crate hand-writes its secret scrubber instead of
+      # using `regex` is bundle size (~1 MB of WASM). Print it on every build so
+      # a regression is visible in the log rather than six months later.
+      - name: Bundle size
+        run: |
+          echo "### Bundle" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          ls -lhS dist/ | awk 'NR>1 {printf "%-40s %s\n", $9, $5}' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          du -sh dist/
+
+      # No upload-artifact here. actions/upload-artifact fails on this Forgejo
+      # (measured), and the only consumer of the `dist` artifact was the publish
+      # job, which is not ported - so the step would be a dependency on an
+      # unsupported API for an artifact nothing reads. If publish ever moves
+      # here, this comes back and Forgejo artifact storage comes with it.
