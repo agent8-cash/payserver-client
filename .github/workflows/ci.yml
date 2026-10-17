@@ -104,6 +104,29 @@ jobs:
       - name: Test
         run: cargo test --all-targets
 
+  wasm-test:
+    name: Wasm test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+
+      # The six `Reflect::set` calls that assemble the wallet-connect
+      # transaction object need a real JS object graph, which the host `Test`
+      # job above can't give them - they're the one part of the send path
+      # nothing here executes otherwise. `scripts/wasm-test.sh` is the single
+      # source for both the install steps and the test command, so a local
+      # run can't drift from what CI does.
+      - name: Wasm-bindgen-test
+        run: ./scripts/wasm-test.sh
+
   layout:
     name: Layout
     runs-on: ubuntu-latest
@@ -177,7 +200,7 @@ jobs:
 
   publish:
     name: Publish image
-    needs: [lint, test, layout, build]
+    needs: [lint, test, wasm-test, layout, build]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 20

@@ -351,19 +351,8 @@ async fn connect_and_send(
     };
 
     let tx = js_sys::Object::new();
-    let set_ok = js_sys::Reflect::set(&tx, &"from".into(), &from_address.into()).is_ok()
-        && match fields {
-            TransferTxFields::Erc20 { to, data } => {
-                js_sys::Reflect::set(&tx, &"to".into(), &to.into()).is_ok()
-                    && js_sys::Reflect::set(&tx, &"data".into(), &data.into()).is_ok()
-            }
-            TransferTxFields::Native { to, value } => {
-                js_sys::Reflect::set(&tx, &"to".into(), &to.into()).is_ok()
-                    && js_sys::Reflect::set(&tx, &"value".into(), &value.into()).is_ok()
-            }
-        };
-    if !set_ok {
-        return WalletActionStatus::Error("failed to build transaction".to_string());
+    if let Err(e) = assemble_transfer_tx(&tx, from_address, fields) {
+        return WalletActionStatus::Error(e);
     }
 
     let params = js_sys::Array::new();
@@ -447,6 +436,39 @@ fn build_transfer_tx_fields(
             to: payment_address.to_string(),
             value,
         }),
+    }
+}
+
+/// Sets `from` plus whichever pair `fields` carries on `target`, the
+/// `eth_sendTransaction` parameter object. Pulled out of `connect_and_send` so
+/// these `Reflect::set` calls — the one part of the send path a mocked
+/// EIP-1193 provider can't reach, because they need a real JS object graph —
+/// can be exercised directly under `wasm-bindgen-test`.
+///
+/// `Reflect::set` returns `Ok(false)`, not `Err`, when a set is refused (a
+/// frozen or non-extensible target): checking only `.is_ok()` would treat that
+/// refusal as success and let a transaction reach the wallet missing a field,
+/// so every call is checked against `Ok(true)`.
+fn assemble_transfer_tx(
+    target: &js_sys::Object,
+    from_address: &str,
+    fields: TransferTxFields,
+) -> Result<(), String> {
+    let set = |key: &str, value: &str| {
+        matches!(
+            js_sys::Reflect::set(target, &key.into(), &value.into()),
+            Ok(true)
+        )
+    };
+    let set_ok = set("from", from_address)
+        && match fields {
+            TransferTxFields::Erc20 { to, data } => set("to", &to) && set("data", &data),
+            TransferTxFields::Native { to, value } => set("to", &to) && set("value", &value),
+        };
+    if set_ok {
+        Ok(())
+    } else {
+        Err("failed to build transaction".to_string())
     }
 }
 
@@ -810,6 +832,128 @@ mod wallet_action_tests {
             WalletActionStatus::Idle
         ));
         assert!(!wallet_button_disabled(&initial_wallet_status(false)));
+    }
+}
+
+// The six `Reflect::set` calls in `assemble_transfer_tx` are the one part of
+// the wallet-connect send path that needs a real JS object graph rather than
+// a mocked EIP-1193 provider, so they need `wasm-bindgen-test` rather than a
+// plain `#[test]`: run under `cargo test --target wasm32-unknown-unknown`
+// with `wasm-bindgen-test-runner` as the target runner (see
+// `scripts/wasm-test.sh`). On every other target `#[wasm_bindgen_test]`
+// compiles to a dead-code-allowed plain function per the macro's own docs, so
+// this module is harmless — just inert — under a normal host `cargo test`.
+#[cfg(test)]
+mod wallet_tx_assembly_tests {
+    use super::*;
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    fn own_keys(target: &js_sys::Object) -> Vec<String> {
+        let mut keys: Vec<String> = js_sys::Object::keys(target)
+            .iter()
+            .map(|k| k.as_string().expect("property keys are strings"))
+            .collect();
+        keys.sort();
+        keys
+    }
+
+    fn get(target: &js_sys::Object, key: &str) -> String {
+        js_sys::Reflect::get(target, &key.into())
+            .expect("key was just set")
+            .as_string()
+            .expect("value is a string")
+    }
+
+    #[wasm_bindgen_test]
+    fn a_token_transfer_sets_exactly_from_to_and_data() {
+        let target = js_sys::Object::new();
+        assemble_transfer_tx(
+            &target,
+            "0xfrom",
+            TransferTxFields::Erc20 {
+                to: "0xtoken".to_string(),
+                data: "0xcalldata".to_string(),
+            },
+        )
+        .expect("assembly succeeds on a plain object");
+
+        assert_eq!(own_keys(&target), vec!["data", "from", "to"]);
+        assert_eq!(get(&target, "from"), "0xfrom");
+        assert_eq!(get(&target, "to"), "0xtoken");
+        assert_eq!(get(&target, "data"), "0xcalldata");
+    }
+
+    #[wasm_bindgen_test]
+    fn a_native_transfer_sets_exactly_from_to_and_value() {
+        let target = js_sys::Object::new();
+        assemble_transfer_tx(
+            &target,
+            "0xfrom",
+            TransferTxFields::Native {
+                to: "0xrecipient".to_string(),
+                value: "0x1".to_string(),
+            },
+        )
+        .expect("assembly succeeds on a plain object");
+
+        assert_eq!(own_keys(&target), vec!["from", "to", "value"]);
+        assert_eq!(get(&target, "from"), "0xfrom");
+        assert_eq!(get(&target, "to"), "0xrecipient");
+        assert_eq!(get(&target, "value"), "0x1");
+    }
+
+    /// A frozen target refuses every `Reflect::set` on it — `Reflect.set`
+    /// reports that by returning `false`, not by throwing, which is exactly
+    /// the case `.is_ok()` alone used to miss. Without the `Ok(true)` check
+    /// this would build (and send) a transaction silently missing `from`.
+    #[wasm_bindgen_test]
+    fn a_refused_set_errors_instead_of_sending_a_silently_incomplete_transaction() {
+        let target = js_sys::Object::new();
+        js_sys::Object::freeze(&target);
+
+        let result = assemble_transfer_tx(
+            &target,
+            "0xfrom",
+            TransferTxFields::Native {
+                to: "0xrecipient".to_string(),
+                value: "0x1".to_string(),
+            },
+        );
+
+        assert!(result.is_err());
+        assert!(own_keys(&target).is_empty());
+    }
+
+    /// A target that accepts `from` but has a read-only `blocked` key: the
+    /// refusal happens after an earlier set succeeded, so a check dropped from
+    /// any later key (not just `from`) would let a partial object through.
+    fn assemble_with_read_only(blocked: &str, fields: TransferTxFields) -> Result<(), String> {
+        let target = js_sys::Object::new();
+        let descriptor = js_sys::Object::new();
+        js_sys::Reflect::set(&descriptor, &"value".into(), &"preset".into()).unwrap();
+        js_sys::Reflect::set(&descriptor, &"writable".into(), &false.into()).unwrap();
+        js_sys::Object::define_property(&target, &blocked.into(), &descriptor);
+
+        let result = assemble_transfer_tx(&target, "0xfrom", fields);
+        assert_eq!(get(&target, blocked), "preset");
+        result
+    }
+
+    #[wasm_bindgen_test]
+    fn a_refused_later_key_errors_on_each_of_to_data_and_value() {
+        let erc20 = || TransferTxFields::Erc20 {
+            to: "0xtoken".to_string(),
+            data: "0xcalldata".to_string(),
+        };
+        let native = || TransferTxFields::Native {
+            to: "0xrecipient".to_string(),
+            value: "0x1".to_string(),
+        };
+
+        assert!(assemble_with_read_only("to", erc20()).is_err());
+        assert!(assemble_with_read_only("data", erc20()).is_err());
+        assert!(assemble_with_read_only("to", native()).is_err());
+        assert!(assemble_with_read_only("value", native()).is_err());
     }
 }
 
