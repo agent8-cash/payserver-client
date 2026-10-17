@@ -331,7 +331,7 @@ pub fn AdminTab() -> impl IntoView {
     };
 
     view! {
-        <div class="settings-tab-admin">
+        <div class="settings-admin-panel">
             {move || {
                 match safe_mode_banner(safe_mode.get(), safe_mode_check_failed.get()) {
                     SafeModeBanner::Active => view! {

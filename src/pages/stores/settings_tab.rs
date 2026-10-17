@@ -120,7 +120,7 @@ pub fn SettingsTab(store_id: String) -> impl IntoView {
     };
 
     view! {
-        <div class="settings-tab">
+        <div class="store-settings">
             <Suspense fallback=move || view! { <p style="color: var(--text-muted);">"Loading settings..."</p> }>
                 {move || settings_resource.get().map(|result| match &*result {
                     Ok(settings) => {
