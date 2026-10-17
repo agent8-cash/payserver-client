@@ -5902,6 +5902,18 @@ tr.payment-row {
     padding: var(--space-4);
     background: var(--bg-tertiary);
     border-radius: var(--radius-md);
+    /* Folded in from a second, later `.ps-mnemonic-grid` block that redefined
+       every property above and added these two. Two rules for one selector is
+       how a later edit lands in the losing one. */
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.ps-mnemonic-copy {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: calc(var(--space-6) * -1 + var(--space-2));
+    margin-bottom: var(--space-6);
 }
 
 .ps-mnemonic-word {
@@ -5918,6 +5930,14 @@ tr.payment-row {
     font-size: var(--font-size-xs);
     color: var(--text-muted);
     min-width: 20px;
+    /* Right-aligned and tabular, or the words do not line up. The index box has
+       a min-width but the number inside it was left-aligned, so with 24 words in
+       three columns indices 1-9 fill rows 1-3 and 10-24 fill rows 4-8 - one
+       glyph against two - and the flex gap then started each word at a
+       different offset. Tabular figures matter on their own: in a proportional
+       face even 10 and 11 differ in width. */
+    text-align: right;
+    font-variant-numeric: tabular-nums;
 }
 
 .ps-mnemonic-text {
@@ -6148,19 +6168,6 @@ tr.payment-row {
     height: 18px;
     margin-top: 2px;
     accent-color: var(--color-primary);
-}
-
-/* Mnemonic grid improvements */
-.ps-mnemonic-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--space-2);
-    margin-bottom: var(--space-6);
-    padding: var(--space-4);
-    background: var(--bg-tertiary);
-    border-radius: var(--radius-md);
-    max-width: 100%;
-    overflow: hidden;
 }
 
 @media (max-width: 400px) {
