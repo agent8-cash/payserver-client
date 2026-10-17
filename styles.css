@@ -5220,7 +5220,7 @@ tr.payment-row {
 .settings-tab-preferences,
 .settings-tab-api-keys,
 .settings-tab-notifications,
-.settings-tab-admin {
+.settings-admin-panel {
     display: flex;
     flex-direction: column;
     gap: var(--space-6);
@@ -6988,15 +6988,15 @@ tr.payment-row {
 }
 
 /* Store settings tab */
-.settings-tab .card {
+.store-settings .card {
     margin-bottom: var(--space-5);
 }
 
-.settings-tab .card-title {
+.store-settings .card-title {
     margin-bottom: var(--space-3);
 }
 
-.settings-tab .card-subtitle {
+.store-settings .card-subtitle {
     margin: 0 0 var(--space-4);
 }
 
