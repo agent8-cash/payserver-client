@@ -23,8 +23,8 @@
 use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 use payserver_plugin_api::page::{
-    Badge, Button, ButtonVariant, Card, Direction, Fields, Form, Grid, Input, Notice, PageElement,
-    Row, Section, Select, Stack, Tab, Table, Tabs, Text, TextStyle, Tone,
+    Badge, Button, ButtonVariant, Card, Direction, Fields, Figure, Form, Grid, Input, Notice,
+    PageElement, Row, Section, Select, Stack, Tab, Table, Tabs, Text, TextStyle, Tone,
 };
 
 use crate::api::ApiClient;
@@ -56,6 +56,16 @@ fn tone_class(tone: Tone) -> &'static str {
         Tone::Success => "badge badge-success",
         Tone::Warning => "badge badge-warning",
         Tone::Danger => "badge badge-error",
+    }
+}
+
+fn figure_class(tone: Tone) -> &'static str {
+    match tone {
+        Tone::Neutral => "plugin-figure plugin-figure-neutral",
+        Tone::Info => "plugin-figure plugin-figure-info",
+        Tone::Success => "plugin-figure plugin-figure-success",
+        Tone::Warning => "plugin-figure plugin-figure-warning",
+        Tone::Danger => "plugin-figure plugin-figure-danger",
     }
 }
 
@@ -118,7 +128,7 @@ fn render(element: &PageElement) -> AnyView {
         }
 
         PageElement::Notice(Notice { text, tone }) => view! {
-            <div class=notice_class(*tone) role="status">{text.clone()}</div>
+            <div role="status" class=notice_class(*tone)>{text.clone()}</div>
         }
         .into_any(),
 
@@ -291,6 +301,17 @@ fn render(element: &PageElement) -> AnyView {
                 .collect_view();
             view! { <div class="plugin-tabs">{sections}</div> }.into_any()
         }
+
+        // A summary tile: the number carries the tone, in place, rather than a
+        // pill beside it - the tone says how urgently the figure matters, not
+        // that it is a status on something else.
+        PageElement::Figure(Figure { label, value, tone }) => view! {
+            <div class=figure_class(*tone)>
+                <span class="plugin-figure-label">{label.clone()}</span>
+                <span class="plugin-figure-value">{value.clone()}</span>
+            </div>
+        }
+        .into_any(),
 
         PageElement::Unknown => view! {
             <div class="plugin-notice plugin-notice-warning" role="status">
@@ -514,7 +535,7 @@ mod tests {
             Tone::Danger,
         ]
         .into_iter()
-        .flat_map(|tone| [tone_class(tone), notice_class(tone)])
+        .flat_map(|tone| [tone_class(tone), notice_class(tone), figure_class(tone)])
         .chain(
             [
                 ButtonVariant::Primary,
@@ -622,6 +643,94 @@ mod tests {
         assert!(html.contains("badge badge-info"));
         assert!(html.contains("<span"), "a badge is inline, not a block");
         assert!(!strip_tags(&html).trim().is_empty());
+    }
+
+    #[test]
+    fn a_figure_renders_its_label_value_and_tone_class() {
+        let html = render(&PageElement::Figure(Figure {
+            label: "Lapsed".to_string(),
+            value: "7".to_string(),
+            tone: Tone::Danger,
+        }))
+        .to_html();
+        assert!(html.contains("plugin-figure plugin-figure-danger"));
+        let text = strip_tags(&html);
+        assert!(text.contains("Lapsed") && text.contains('7'));
+        assert!(!html.contains("needs a newer version"));
+        // The label and the number are separate elements, because the
+        // stylesheet tones the number and leaves the label alone. One combined
+        // string would tone both, or neither.
+        assert!(html.contains("plugin-figure-label") && html.contains("plugin-figure-value"));
+    }
+
+    /// Every tone, including the default one.
+    ///
+    /// `Tone::Neutral` is the reason this exists separately from the test
+    /// above. It is `#[default]`, so a figure that says nothing about its tone
+    /// gets it, and it was the one tone whose class the stylesheet did not
+    /// define - the single test case above happened to use `Danger` and could
+    /// not see it. A tone a plugin reaches by omission is the easiest one to
+    /// leave untested and the likeliest one to be sent.
+    #[test]
+    fn every_tone_gives_a_figure_its_own_class_and_none_is_the_placeholder() {
+        let mut seen = Vec::new();
+        for tone in [
+            Tone::Neutral,
+            Tone::Info,
+            Tone::Success,
+            Tone::Warning,
+            Tone::Danger,
+        ] {
+            let html = render(&PageElement::Figure(Figure {
+                label: "Active".to_string(),
+                value: "128".to_string(),
+                tone,
+            }))
+            .to_html();
+            assert!(
+                !html.contains("needs a newer version"),
+                "{tone:?} fell through to the unrecognised-element placeholder"
+            );
+            let class = figure_class(tone);
+            assert!(html.contains(class), "{tone:?} should render {class}");
+            seen.push(class);
+        }
+
+        // A tone that shares another's class renders as that other tone, which
+        // is a wrong reading rather than a missing one - worse, and invisible
+        // to a test that only checks the class is present.
+        let mut unique = seen.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(
+            unique.len(),
+            seen.len(),
+            "two tones render the same class, so one reads as the other: {seen:?}"
+        );
+    }
+
+    /// `Figure` is a figure, not a badge.
+    ///
+    /// The vocabulary's own doc comment is explicit that four counts drawn as
+    /// coloured pills above a table "read as status on nothing", and that this
+    /// element exists precisely so a plugin does not have to do that. Drawing
+    /// one with the badge classes would satisfy every other assertion here -
+    /// the text is present, a tone class is present, nothing is the
+    /// placeholder - while putting back the thing the element was added to
+    /// avoid.
+    #[test]
+    fn a_figure_is_not_drawn_as_a_badge() {
+        let html = render(&PageElement::Figure(Figure {
+            label: "Past due".to_string(),
+            value: "6".to_string(),
+            tone: Tone::Warning,
+        }))
+        .to_html();
+        assert!(
+            !html.contains("badge"),
+            "a figure must not borrow the badge classes: a toned pill says this is \
+             a status on something else, and the number here is the whole point"
+        );
     }
 
     #[test]

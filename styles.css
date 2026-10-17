@@ -348,6 +348,15 @@ a:hover {
     transform: translateY(0);
 }
 
+/* The list scrolls inside the menu so many stores cannot push it past the
+   viewport; the sidebar header and the Manage link stay outside it. */
+.store-dropdown-list {
+    max-height: min(320px, calc(100vh - 220px));
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
 .store-dropdown-item {
     display: flex;
     align-items: center;
@@ -861,6 +870,19 @@ a:hover {
     background: var(--color-gray-50);
 }
 
+/* Bounded, scrolling user list: the page stays a fixed height however many
+   users there are, and the header stays visible while the rows scroll. */
+.admin-users-table {
+    max-height: 480px;
+    overflow: auto;
+}
+
+.admin-users-table .table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
 .table-cell-primary {
     color: var(--text-primary);
     font-weight: 500;
@@ -878,6 +900,20 @@ a:hover {
 
 .table-cell-link:hover {
     text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+    /* Without this, a column with unbreakable content (a long decimal, a
+       status badge) shrinks until it wraps or clips instead of the table
+       scrolling inside `.table-container` (rule above, at line 828) - the
+       same pairing `.addresses-table`/`.addresses-table-container` already
+       uses below. `check-classes-styled.py`, wired into CI as "Every class
+       in the markup has a rule", checks every emitted class regardless of
+       prefix, so `.table`/`.table-container` are covered and that pairing
+       can't silently go stale. */
+    .table {
+        min-width: 500px;
+    }
 }
 
 /* ============================================
@@ -1091,6 +1127,44 @@ a:hover {
     background: color-mix(in srgb, var(--color-success) 10%, transparent);
     color: var(--color-success);
     border: 1px solid color-mix(in srgb, var(--color-success) 20%, transparent);
+}
+
+/* Page-level banners (safe mode, settings save results). Text keeps the
+   normal colour so it stays readable on the tint in both themes; the tone
+   comes from the border, background and the heading. */
+.alert {
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--border-radius-md);
+    font-size: var(--text-sm);
+    margin-bottom: var(--space-4);
+    color: var(--text-primary);
+}
+
+.alert p {
+    margin: var(--space-1) 0 0;
+}
+
+.alert-error {
+    background: color-mix(in srgb, var(--color-error) 10%, transparent);
+    border: 1px solid var(--color-error);
+}
+
+.alert-error strong {
+    color: var(--color-error);
+}
+
+.alert-warning {
+    background: var(--color-warning-light);
+    border: 1px solid var(--color-warning);
+}
+
+.alert-warning strong {
+    color: var(--color-warning);
+}
+
+.alert-success {
+    background: color-mix(in srgb, var(--color-success) 10%, transparent);
+    border: 1px solid var(--color-success);
 }
 
 .form-alert-action {
@@ -1625,11 +1699,39 @@ a:hover {
     text-decoration-color: var(--border-color);
 }
 
+/* An arrow rather than the word "Go": the label beside it already says what
+   the step is, so a second word only competed with it. The accessible name
+   comes from aria-label on the link, not from the glyph. */
 .onboarding-step-action {
-    font-size: var(--text-xs);
-    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     color: var(--color-primary);
-    text-decoration: underline;
+    text-decoration: none;
+    border-radius: var(--radius-sm);
+    /* Keeps the hit target at the 24px the icon alone would not reach. */
+    padding: var(--space-1);
+    transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.onboarding-step-action:hover {
+    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+    transform: translateX(2px);
+}
+
+.onboarding-step-action:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .onboarding-step-action {
+        transition: background-color 0.15s ease;
+    }
+
+    .onboarding-step-action:hover {
+        transform: none;
+    }
 }
 
 /* Metrics Grid */
@@ -6705,6 +6807,68 @@ tr.payment-row {
     border-left-color: var(--color-error);
 }
 
+/* A summary tile. Deliberately the same box as `.metric-card` on the
+   dashboard: a plugin's tiles sit on an operator screen directly beside the
+   host's own metric cards, and a tile with no surface and no shadow beside
+   four that have both is how a plugin page reads as the odd one out.
+
+   The radius previously came from `--radius-md`, which no :root in this file
+   defines, so it fell through to its own hardcoded `8px`. That happens to be
+   what `--border-radius-lg` resolves to, so nothing was visibly wrong - which
+   is the point worth keeping: a `var()` fallback cannot fail loudly, so a
+   token that stops existing is indistinguishable from one that works until
+   the day its value and the fallback diverge. */
+.plugin-figure {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-5);
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-xs);
+}
+
+.plugin-figure-label {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.plugin-figure-value {
+    font-size: var(--text-3xl);
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+}
+
+/* Spelled out rather than left to inherit from `.plugin-figure-value`.
+   The renderer emits a tone class for every tone including this one, and a
+   class with no rule is the one styling mistake nothing reports: the markup
+   is valid, the build is green, and the page is simply unstyled. Leaving
+   neutral implicit shipped exactly that - the class was emitted and matched
+   no rule in this file at all. */
+.plugin-figure-neutral .plugin-figure-value {
+    color: var(--text-primary);
+}
+
+.plugin-figure-info .plugin-figure-value {
+    color: var(--color-info);
+}
+
+.plugin-figure-success .plugin-figure-value {
+    color: var(--color-success);
+}
+
+.plugin-figure-warning .plugin-figure-value {
+    color: #9e6c00;
+}
+
+.plugin-figure-danger .plugin-figure-value {
+    color: var(--color-error);
+}
+
 .plugin-form,
 .plugin-field {
     display: flex;
@@ -6821,4 +6985,273 @@ tr.payment-row {
     .plugin-field-value {
         text-align: left;
     }
+}
+
+/* Store settings tab */
+.settings-tab .card {
+    margin-bottom: var(--space-5);
+}
+
+.settings-tab .card-title {
+    margin-bottom: var(--space-3);
+}
+
+.settings-tab .card-subtitle {
+    margin: 0 0 var(--space-4);
+}
+
+.notification-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.color-input-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.color-input-row .form-input {
+    flex: 1;
+}
+
+.color-swatch {
+    width: 40px;
+    height: 36px;
+    padding: 2px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    background: var(--bg-primary);
+    cursor: pointer;
+}
+
+.branding-preview {
+    padding: var(--space-3);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+}
+
+.policy-table {
+    margin: var(--space-3) 0;
+}
+
+.policy-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    border-bottom: 1px solid var(--border-color);
+    font-size: var(--text-sm);
+}
+
+.policy-row-head {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+}
+
+.policy-add {
+    display: flex;
+    gap: var(--space-2);
+    align-items: flex-end;
+    margin-bottom: var(--space-4);
+}
+
+.policy-add > div {
+    min-width: 0;
+}
+
+/* ============================================
+   Error states
+   ============================================ */
+.error-container,
+.error-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    padding: var(--space-12) var(--space-6);
+    text-align: center;
+    color: var(--color-error);
+}
+
+.error-state {
+    background: var(--color-error-light);
+    border-radius: var(--border-radius-md);
+    font-size: var(--text-sm);
+}
+
+.error-icon {
+    display: flex;
+    color: var(--color-error);
+}
+
+.error-message {
+    margin: 0;
+    max-width: 480px;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
+/* ============================================
+   404 page
+   ============================================ */
+.evm-not-found {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+}
+
+.evm-not-found-content {
+    text-align: center;
+    padding: var(--space-8);
+}
+
+.evm-not-found-code {
+    margin: 0;
+    font-size: 5rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text-muted);
+}
+
+.evm-not-found-title {
+    margin: var(--space-4) 0;
+    font-size: 1.5rem;
+    color: var(--text-primary);
+}
+
+.evm-not-found-message {
+    margin: 0 0 var(--space-6);
+    color: var(--text-muted);
+}
+
+/* ============================================
+   Stores list states
+   ============================================ */
+.stores-loading,
+.stores-empty,
+.stores-error {
+    text-align: center;
+    padding: var(--space-12);
+}
+
+.stores-loading {
+    color: var(--text-muted);
+}
+
+.stores-error {
+    color: var(--color-error);
+}
+
+.store-card-date {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+/* ============================================
+   Admin user table
+   ============================================ */
+.data-table td {
+    vertical-align: middle;
+}
+
+.user-row.locked {
+    background: var(--color-warning-light);
+}
+
+.user-cell {
+    white-space: nowrap;
+}
+
+.user-name {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.date-cell {
+    white-space: nowrap;
+    color: var(--text-muted);
+}
+
+.form-input-sm {
+    width: auto;
+    padding: var(--space-1) var(--space-2);
+}
+
+.form-status {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+/* ============================================
+   Invoices, payments, wallets, dashboard, EVM
+   ============================================ */
+/* Cells hold stacked content (id over order id), so centre rather than
+   baseline-align against the single-line cells beside them. */
+.invoice-row td {
+    vertical-align: middle;
+}
+
+.invoice-received {
+    font-weight: 500;
+    color: var(--color-success);
+}
+
+.tx-hash-search {
+    position: relative;
+}
+
+.tx-search-error {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: var(--space-1);
+    font-size: var(--text-xs);
+    color: var(--color-error);
+}
+
+.detail-value-mono {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    word-break: break-all;
+}
+
+/* Flex child of .wallet-card-header: take the remaining width and let a long
+   wallet name truncate instead of pushing the card wider. */
+.wallet-card-title {
+    flex: 1;
+    min-width: 0;
+}
+
+.wallet-card-title .wallet-card-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Grid item of .charts-section (2fr 1fr): without min-width 0 the chart's
+   intrinsic width stretches the 2fr track and squeezes the side card. */
+.chart-card-main {
+    min-width: 0;
+}
+
+.settings-tab-icon {
+    flex-shrink: 0;
+    margin-right: var(--space-1);
+    vertical-align: -2px;
+}
+
+.evm-amount-details {
+    margin-top: var(--space-1);
+}
+
+.evm-chain-info {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
 }

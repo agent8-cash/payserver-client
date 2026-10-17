@@ -3,7 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PayServer</title>
+    <title>Random Cash</title>
+    <!-- SVG for modern browsers, PNG for the rest, and favicon.ico at the site
+         root for the browsers and crawlers that request it without reading the
+         markup. copy-file keeps the names unhashed so all three stay addressable. -->
+    <link data-trunk rel="copy-file" href="assets/favicon.svg">
+    <link data-trunk rel="copy-file" href="assets/favicon.png">
+    <link data-trunk rel="copy-file" href="assets/favicon.ico">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32">
+    <link rel="shortcut icon" href="/favicon.ico">
     <link data-trunk rel="css" href="styles.css">
     <!-- Client error capture (Sentry-protocol error telemetry) — see src/telemetry.
          Empty content disables reporting, which is the default: the collector

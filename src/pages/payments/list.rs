@@ -11,7 +11,9 @@ use crate::util::{chain_name, short_store_id, use_debounced_search};
 
 use super::format::{format_date, payment_status, payment_status_class, truncate_hash};
 use super::icons::{IconChevronRight, IconExport, IconExternalLink, IconMore, IconSearch};
-use ui_kit::{CompactAmount, units_to_decimal};
+use std::collections::HashMap;
+
+use ui_kit::{trim_amount, units_to_decimal};
 
 /// Payments list page.
 #[component]
@@ -341,8 +343,10 @@ pub fn PaymentsPage() -> impl IntoView {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {payments.clone().into_iter().map(|payment| {
-                                                view! { <PaymentRow payment=payment show_store=show_store.get() /> }
+                                            {let scales = column_scales(&payments);
+                                            payments.clone().into_iter().map(|payment| {
+                                                let scale = scales.get(&payment.asset_symbol).copied().unwrap_or(0);
+                                                view! { <PaymentRow payment=payment show_store=show_store.get() scale=scale /> }
                                             }).collect_view()}
                                         </tbody>
                                     </table>
@@ -350,8 +354,10 @@ pub fn PaymentsPage() -> impl IntoView {
 
                                 // Payment Cards (Mobile)
                                 <div class="payments-cards mobile-only">
-                                    {payments.into_iter().map(|payment| {
-                                        view! { <PaymentCard payment=payment show_store=show_store.get() /> }
+                                    {let scales = column_scales(&payments);
+                                    payments.into_iter().map(|payment| {
+                                        let scale = scales.get(&payment.asset_symbol).copied().unwrap_or(0);
+                                        view! { <PaymentCard payment=payment show_store=show_store.get() scale=scale /> }
                                     }).collect_view()}
                                 </div>
 
@@ -396,12 +402,31 @@ fn store_label(payment: &Payment) -> String {
     }
 }
 
+/// Fractional digits each asset's amounts are padded to in the table.
+///
+/// Compression is decided per value, so a column mixing `0.000139292` with
+/// `0.0₄85129` cannot be compared down the page. The table shows every amount
+/// of an asset as a plain literal at the widest scale on the page instead, so
+/// the digits line up; subscript compression stays on the single-value
+/// summaries (dashboard) where there is nothing to compare against.
+fn column_scales(payments: &[Payment]) -> HashMap<String, usize> {
+    let mut scales = HashMap::new();
+    for payment in payments {
+        let literal = trim_amount(&units_to_decimal(&payment.amount, payment.decimals), 0);
+        let scale = literal.split_once('.').map_or(0, |(_, frac)| frac.len());
+        let widest = scales.entry(payment.asset_symbol.clone()).or_insert(0);
+        *widest = (*widest).max(scale);
+    }
+    scales
+}
+
 /// Payment table row.
 ///
 /// `show_store` adds the store column, which the list page turns on only for
-/// the "All Stores" view — see above.
+/// the "All Stores" view — see above. `scale` is the asset's entry from
+/// [`column_scales`].
 #[component]
-fn PaymentRow(payment: Payment, show_store: bool) -> impl IntoView {
+fn PaymentRow(payment: Payment, show_store: bool, scale: usize) -> impl IntoView {
     let store_display = show_store.then(|| store_label(&payment));
     let tx_display = truncate_hash(&payment.tx_hash, 10, 8);
     let network = chain_name(&payment.chain_id).to_string();
@@ -413,6 +438,8 @@ fn PaymentRow(payment: Payment, show_store: bool) -> impl IntoView {
     let payment_link = payment.id.clone();
     let amount_decimal = units_to_decimal(&payment.amount, payment.decimals);
     let asset_symbol = payment.asset_symbol.clone();
+    let exact = format!("{} {asset_symbol}", trim_amount(&amount_decimal, 0));
+    let padded = format!("{} {asset_symbol}", trim_amount(&amount_decimal, scale));
 
     view! {
         <tr class="payment-row">
@@ -434,9 +461,7 @@ fn PaymentRow(payment: Payment, show_store: bool) -> impl IntoView {
                 </td>
             })}
             <td>
-                <span class="payment-amount">
-                    <CompactAmount value=amount_decimal symbol=asset_symbol />
-                </span>
+                <span class="payment-amount" title=exact.clone() aria-label=exact>{padded}</span>
             </td>
             <td>
                 <span class="payment-network">{network}</span>
@@ -463,9 +488,11 @@ fn PaymentRow(payment: Payment, show_store: bool) -> impl IntoView {
 
 /// Mobile payment card component.
 ///
-/// `show_store` behaves as on [`PaymentRow`].
+/// `show_store` and `scale` behave as on [`PaymentRow`]: the cards are a
+/// stacked set, so they share the table's per-asset scale rather than each
+/// deciding its own notation.
 #[component]
-fn PaymentCard(payment: Payment, show_store: bool) -> impl IntoView {
+fn PaymentCard(payment: Payment, show_store: bool, scale: usize) -> impl IntoView {
     let store_display = show_store.then(|| store_label(&payment));
     let tx_display = truncate_hash(&payment.tx_hash, 8, 6);
     let network = chain_name(&payment.chain_id).to_string();
@@ -477,13 +504,15 @@ fn PaymentCard(payment: Payment, show_store: bool) -> impl IntoView {
     let payment_link = payment.id.clone();
     let amount_decimal = units_to_decimal(&payment.amount, payment.decimals);
     let asset_symbol = payment.asset_symbol.clone();
+    let exact = format!("{} {asset_symbol}", trim_amount(&amount_decimal, 0));
+    let padded = format!("{} {asset_symbol}", trim_amount(&amount_decimal, scale));
 
     view! {
         <div class="payment-card">
             <div class="payment-card-header">
                 <div class="payment-card-amount">
-                    <span class="payment-card-amount-value">
-                        <CompactAmount value=amount_decimal symbol=asset_symbol />
+                    <span class="payment-card-amount-value" title=exact.clone() aria-label=exact>
+                        {padded}
                     </span>
                     <span class="payment-card-network">{network}</span>
                 </div>
@@ -522,9 +551,10 @@ fn PaymentCard(payment: Payment, show_store: bool) -> impl IntoView {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_pick_a_store_400, store_label};
+    use super::{column_scales, is_pick_a_store_400, store_label};
     use crate::api::Payment;
     use types::ChainId;
+    use ui_kit::{trim_amount, units_to_decimal};
 
     #[test]
     fn no_store_and_no_reason_is_pick_a_store() {
@@ -588,5 +618,37 @@ mod tests {
         // invoice could not be read. Neither should render a blank cell.
         assert_eq!(store_label(&payment(None, None)), "Unknown store");
         assert_eq!(store_label(&payment(Some(""), Some(""))), "Unknown store");
+    }
+
+    fn eth(amount: &str) -> Payment {
+        let mut p = payment(None, None);
+        p.amount = amount.to_string();
+        p.decimals = 18;
+        p.asset_symbol = "ETH".to_string();
+        p
+    }
+
+    #[test]
+    fn a_column_pads_every_row_to_the_widest_scale_instead_of_mixing_notations() {
+        // 0.000139292 and 0.0000085129: three and five leading zeros, which
+        // the per-value rule rendered as a literal and a subscript.
+        let rows = [eth("139292000000000"), eth("8512900000000")];
+        let scales = column_scales(&rows);
+        assert_eq!(scales["ETH"], 10);
+        let shown: Vec<_> = rows
+            .iter()
+            .map(|p| trim_amount(&units_to_decimal(&p.amount, p.decimals), scales["ETH"]))
+            .collect();
+        assert_eq!(shown, ["0.0001392920", "0.0000085129"]);
+    }
+
+    #[test]
+    fn scales_are_per_asset() {
+        let mut usdc = eth("1500000");
+        usdc.decimals = 6;
+        usdc.asset_symbol = "USDC".to_string();
+        let scales = column_scales(&[eth("1000000000000000"), usdc]);
+        assert_eq!(scales["ETH"], 3);
+        assert_eq!(scales["USDC"], 1);
     }
 }

@@ -3,6 +3,7 @@
 mod header;
 mod icons;
 mod layout;
+mod return_to;
 
 use leptos::prelude::*;
 use leptos_router::{
@@ -101,7 +102,7 @@ pub fn App() -> impl IntoView {
             <Router>
                 <Routes fallback=|| view! { <NotFoundPage /> }>
                     // Public routes (no layout)
-                    <Route path=path!("/login") view=|| view! { <LoginPage /> } />
+                    <Route path=path!("/login") view=|| view! { <LoginPage redirect_to=return_to::take() /> } />
                     <Route path=path!("/register") view=|| view! { <RegisterPage /> } />
                     <Route path=path!("/checkout/:id") view=|| view! { <CheckoutPage /> } />
 

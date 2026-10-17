@@ -13,7 +13,7 @@ use ui_kit::{CopyButton, format_units};
 
 use crate::api::{ApiClient, ApiError, CheckoutResponse, PaymentOption};
 use crate::services::websocket::{StatusUpdate, WebSocketService};
-use crate::util::chain_name;
+use crate::util::{chain_name, format_fiat_amount};
 
 mod countdown;
 mod qr_picker;
@@ -197,6 +197,48 @@ pub fn CheckoutPage() -> impl IntoView {
     }
 }
 
+/// Compare two non-negative decimal strings; `None` if either is malformed.
+fn cmp_decimal(a: &str, b: &str) -> Option<std::cmp::Ordering> {
+    fn parts(s: &str) -> Option<(String, String)> {
+        let (int, frac) = s.trim().split_once('.').unwrap_or((s.trim(), ""));
+        let digits = |t: &str| t.chars().all(|c| c.is_ascii_digit());
+        if int.is_empty() || !digits(int) || !digits(frac) {
+            return None;
+        }
+        Some((
+            int.trim_start_matches('0').to_string(),
+            frac.trim_end_matches('0').to_string(),
+        ))
+    }
+    let (ai, af) = parts(a)?;
+    let (bi, bf) = parts(b)?;
+    Some(
+        ai.len()
+            .cmp(&bi.len())
+            .then_with(|| ai.cmp(&bi))
+            .then_with(|| af.cmp(&bf)),
+    )
+}
+
+/// Whether a payment covering the full amount has been detected and is only
+/// waiting on confirmations. Expiry no longer decides the outcome then, so the
+/// countdown stops. A partial payment does not qualify: more is still needed
+/// before the deadline. A malformed amount keeps the countdown running.
+///
+/// `amount` and `amount_received` are both taken from the same invoice record
+/// and are both in the invoice currency; the server's own settlement check
+/// compares exactly these two fields. The server also accepts a payment a
+/// small store-configured tolerance short of `amount`, which the checkout
+/// response does not expose, so this test is deliberately stricter: such a
+/// payment keeps the countdown running rather than stopping it early.
+fn is_awaiting_confirmations(status: &str, amount: &str, amount_received: &str) -> bool {
+    status == "processing"
+        && matches!(
+            cmp_decimal(amount_received, amount),
+            Some(std::cmp::Ordering::Equal | std::cmp::Ordering::Greater)
+        )
+}
+
 /// Render the checkout content once data is loaded.
 fn render_checkout(
     data: CheckoutResponse,
@@ -210,9 +252,9 @@ fn render_checkout(
     if data.is_paid {
         return view! {
             <div class="checkout-status checkout-paid">
-                <div class="checkout-status-icon">"&#10003;"</div>
+                <div class="checkout-status-icon">"✓"</div>
                 <h2>"Payment Complete"</h2>
-                <p class="checkout-amount">{data.amount.clone()}" "{data.currency.clone()}</p>
+                <p class="checkout-amount">{format_fiat_amount(&data.amount, &data.currency)}</p>
                 <p class="checkout-status-detail">"Thank you for your payment."</p>
             </div>
         }
@@ -222,9 +264,9 @@ fn render_checkout(
     if data.is_expired {
         return view! {
             <div class="checkout-status checkout-expired">
-                <div class="checkout-status-icon">"&#10007;"</div>
+                <div class="checkout-status-icon">"✗"</div>
                 <h2>"Invoice Expired"</h2>
-                <p class="checkout-amount">{data.amount.clone()}" "{data.currency.clone()}</p>
+                <p class="checkout-amount">{format_fiat_amount(&data.amount, &data.currency)}</p>
                 <p class="checkout-status-detail">"This invoice is no longer accepting payments."</p>
             </div>
         }
@@ -234,9 +276,9 @@ fn render_checkout(
     if status == "cancelled" {
         return view! {
             <div class="checkout-status checkout-expired">
-                <div class="checkout-status-icon">"&#10007;"</div>
+                <div class="checkout-status-icon">"✗"</div>
                 <h2>"Invoice Cancelled"</h2>
-                <p class="checkout-amount">{data.amount.clone()}" "{data.currency.clone()}</p>
+                <p class="checkout-amount">{format_fiat_amount(&data.amount, &data.currency)}</p>
             </div>
         }
         .into_any();
@@ -266,6 +308,9 @@ fn render_checkout(
     let currency = data.currency.clone();
     let expires_at = data.expires_at;
 
+    let awaiting_confirmations =
+        is_awaiting_confirmations(&status, &data.amount, &data.amount_received);
+
     let status_label = match status.as_str() {
         "processing" => "Payment detected, awaiting confirmation...",
         "partially_paid" => "Partial payment received",
@@ -278,9 +323,18 @@ fn render_checkout(
         <div class="checkout-body">
             // Amount and status
             <div class="checkout-amount-section">
-                <p class="checkout-amount">{amount.clone()}" "{currency.clone()}</p>
+                <p class="checkout-amount">{format_fiat_amount(&amount, &currency)}</p>
                 <p class="checkout-status-label">{status_label}</p>
-                <CountdownTimer expires_at=expires_at.to_rfc3339() />
+                {if awaiting_confirmations {
+                    view! {
+                        <div class="checkout-countdown">
+                            <span class="checkout-countdown-label">"Waiting for confirmations"</span>
+                        </div>
+                    }
+                    .into_any()
+                } else {
+                    view! { <CountdownTimer expires_at=expires_at.to_rfc3339() /> }.into_any()
+                }}
             </div>
 
             // Chain/asset selector
@@ -411,4 +465,30 @@ fn render_checkout(
         </div>
     }
     .into_any()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn full_payment_awaiting_confirmations_stops_the_countdown() {
+        assert!(is_awaiting_confirmations("processing", "100.00", "100"));
+        assert!(is_awaiting_confirmations("processing", "9.5", "10.50"));
+        assert!(is_awaiting_confirmations("processing", "0.10", "00.1000"));
+    }
+
+    #[test]
+    fn partial_payment_keeps_the_countdown_running() {
+        assert!(!is_awaiting_confirmations("processing", "100.00", "99.99"));
+        assert!(!is_awaiting_confirmations("processing", "100", "0.00"));
+        assert!(!is_awaiting_confirmations("partially_paid", "100", "50"));
+    }
+
+    #[test]
+    fn other_states_and_bad_amounts_keep_the_countdown_running() {
+        assert!(!is_awaiting_confirmations("pending", "100", "100"));
+        assert!(!is_awaiting_confirmations("processing", "100", ""));
+        assert!(!is_awaiting_confirmations("processing", "abc", "100"));
+    }
 }

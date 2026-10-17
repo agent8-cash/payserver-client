@@ -8,7 +8,7 @@ use crate::api::ApiClient;
 use crate::components::CreateInvoiceSignal;
 use crate::services::ConnectionState;
 
-use super::icons::{IconBell, IconLogout, IconMenu, IconSettings, IconUser};
+use super::icons::{IconLogout, IconMenu, IconSettings, IconUser};
 
 /// Main header with search and actions.
 #[component]
@@ -68,14 +68,6 @@ where
 
                 <div class="main-header-actions">
                     <ConnectionIndicator state=ws_state />
-                    // No notification centre behind the bell yet.
-                    <button
-                        class="ps-btn ps-btn-ghost ps-btn-sm"
-                        disabled=true
-                        title="Notifications are not implemented yet"
-                    >
-                        <IconBell />
-                    </button>
                     <button
                         class="ps-btn ps-btn-primary ps-btn-sm header-create-invoice"
                         on:click=move |_| create_invoice.open()

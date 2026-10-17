@@ -38,6 +38,12 @@ pub fn ApiKeysTab() -> impl IntoView {
         let request = CreateApiKeyRequest {
             name: name.trim().to_string(),
             expires_at: None,
+            // This form has no scoping picker yet, so it asks for the same
+            // access a key had before this field existed: the owner's role
+            // in full. `"unrestricted"` is the wire sentinel for that ask -
+            // an empty list means the opposite, a key that can authenticate
+            // and nothing else, so it is not a stand-in for "no preference".
+            permissions: vec!["unrestricted".to_string()],
         };
         set_loading.set(true);
         wasm_bindgen_futures::spawn_local(async move {

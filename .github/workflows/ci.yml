@@ -76,7 +76,7 @@ jobs:
       # nothing else here notices: the layout suite asserts geometry rather than
       # colour, and e2e locates elements by class, which still match - unstyled.
       # That shipped once, stripping 104 buttons of their styling on testnet.
-      - name: Every ps- class in the markup has a rule
+      - name: Every class in the markup has a rule
         run: python3 scripts/check-classes-styled.py
 
       # The bundle is what ships, and it is the only configuration where
@@ -163,6 +163,15 @@ jobs:
 
       - name: Build
         run: trunk build --release
+
+      # The image is built from dist/, so this checks what is actually served
+      # rather than what the repository holds.
+      - name: Favicon and title are in the bundle
+        run: |
+          for f in favicon.svg favicon.png favicon.ico; do
+            test -s "dist/$f" || { echo "::error::dist/$f missing"; exit 1; }
+          done
+          grep -q '<title>Random Cash</title>' dist/index.html
 
       # The whole reason this crate hand-writes its secret scrubber instead of
       # using `regex` is bundle size (~1 MB of WASM). Print it on every build so

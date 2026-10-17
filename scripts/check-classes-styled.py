@@ -30,8 +30,11 @@ one, and every literal in the expression when it is a conditional, which is how
 positive.
 
 What it cannot see is a class chosen by a function - `class=tone_class(tone)`
-has no literal on the line. `plugin_page.rs` covers its own three such helpers
-in a unit test, by calling them.
+has no literal on the line. `plugin_page.rs` covers its own four such helpers
+in a unit test, by calling them. That unit test is the only thing standing
+behind them, so a new helper that is not added to it is unguarded by anything:
+`figure_class` was added without being listed there and shipped a tone class
+with no rule, green through both checks.
 
 ## The baseline
 

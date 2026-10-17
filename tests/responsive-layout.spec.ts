@@ -197,6 +197,71 @@ test.describe('table column alignment', () => {
 });
 
 /**
+ * A plugin table (`plugin_page.rs` renders every `PageElement::Table` as
+ * `.table-container > table.table`) has no fixed column widths, so a narrow
+ * viewport used to shrink columns to fit instead of scrolling - clipping a
+ * long decimal (`PAID TO DATE`, a NUMERIC(38,18) sum) mid-word and wrapping a
+ * status cell onto a second line. `.table` now gets a `min-width` under the
+ * same breakpoint the sibling tables already use, forcing `.table-container`
+ * (which sets `overflow-x: auto`) to scroll instead of the columns squeezing.
+ *
+ * Two things could still go wrong that a screenshot would catch and a class
+ * name would not: the min-width could land on a container with no scroll
+ * rule, in which case the *page* scrolls sideways instead of the table - the
+ * one outcome that is explicitly not allowed - or the rule could simply not
+ * apply and the old clipping would return.
+ *
+ * The status cell below is plain text, not a styled span: `PageElement::Table`
+ * carries `rows: Vec<Vec<String>>` with no slot for a badge, and the plugin
+ * that fills this table keeps only a badge's text for its status column, so
+ * `<td>Active</td>` is what the live page emits, not a simplification of it.
+ */
+test.describe('plugin page table overflow', () => {
+  const TABLE = `
+    <div class="ps-page">
+      <div class="ps-card">
+        <div class="ps-card-body">
+          <div class="table-container">
+            <table class="table">
+              <thead><tr><th>Plan</th><th>Status</th><th>Paid To Date</th></tr></thead>
+              <tbody>
+                <tr><td>Pro Monthly</td><td>Active</td><td>0.500000000000000000 USDC</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  test('the table scrolls inside its own container on a narrow screen', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 800 });
+    await page.setContent(`<style>${CSS}</style>${TABLE}`);
+
+    const overflowX = await page
+      .locator('.table-container')
+      .evaluate((el) => getComputedStyle(el).overflowX);
+    expect(overflowX, '.table-container must be the scroll boundary').toBe('auto');
+
+    const { containerScrolls, tableWidth } = await page.locator('.table-container').evaluate((el) => ({
+      containerScrolls: el.scrollWidth > el.clientWidth,
+      tableWidth: el.querySelector('table')!.getBoundingClientRect().width,
+    }));
+    expect(containerScrolls, 'the wide table must overflow its own container').toBe(true);
+    expect(tableWidth, 'table must not be squeezed narrower than its min-width').toBeGreaterThanOrEqual(500);
+  });
+
+  test('the page body does not scroll sideways when the table does', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 800 });
+    await page.setContent(`<style>${CSS}</style>${TABLE}`);
+
+    const bodyOverflows = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    );
+    expect(bodyOverflows, 'the table must scroll inside .table-container, not push the page wide').toBe(false);
+  });
+});
+
+/**
  * `.payment-method-row` has the identical collision: the dashboard's payment
  * methods breakdown renders each entry as `<div class="payment-method-row">`
  * and wants a flex layout, while the Payment Methods tab's table renders
@@ -309,5 +374,242 @@ test.describe('recovery confirm step', () => {
 
     expect(label, 'the checkbox should sit in the warning box').not.toBe('rgba(0, 0, 0, 0)');
     expect(step, 'the step container should not repeat it').toBe('rgba(0, 0, 0, 0)');
+  });
+});
+
+test.describe('safe-mode banner', () => {
+  // The banner is taken from the Rust source rather than retyped here. The
+  // client is wasm and needs a trunk build plus an authenticated admin session
+  // to reach the safe-mode branch, which this server-less suite cannot do; but
+  // a hand-copied snippet would keep passing after the real markup moved to a
+  // different class. Reading the `SafeModeBanner::Active` arm means a change
+  // of classes there changes what is asserted here.
+  const SRC = readFileSync(path.join(__dirname, '../src/pages/settings/admin.rs'), 'utf8');
+  const arm = SRC.match(/SafeModeBanner::Active => view! \{\s*<div class="([^"]+)">\s*<(\w+)>/);
+
+  test('the active arm of the real admin tab is found', () => {
+    expect(arm, 'could not locate the SafeModeBanner::Active markup in admin.rs').not.toBeNull();
+  });
+
+  test('is visibly styled in the error tone rather than plain text', async ({ page }) => {
+    const [, classes, heading] = arm!;
+    await page.setContent(
+      `<style>${CSS}</style><div class="${classes}"><${heading}>SAFE MODE</${heading}><p>plugins disabled</p></div>`,
+    );
+    await expect(page.locator('div').first()).toBeVisible();
+
+    const probe = await page.evaluate(() => {
+      const el = document.querySelector('div')!;
+      const s = getComputedStyle(el);
+      // Resolve the token through a throwaway element so the expected value is
+      // in the same rgb() form as the computed one.
+      const t = document.createElement('i');
+      t.style.color = getComputedStyle(document.documentElement).getPropertyValue('--color-error').trim();
+      document.body.appendChild(t);
+      return {
+        bg: s.backgroundColor,
+        borderColor: s.borderTopColor,
+        borderWidth: s.borderTopWidth,
+        token: getComputedStyle(document.documentElement).getPropertyValue('--color-error').trim(),
+        error: getComputedStyle(t).color,
+        headingColor: getComputedStyle(el.firstElementChild!).color,
+        pageBg: getComputedStyle(document.body).backgroundColor,
+      };
+    });
+    expect(probe.token, '--color-error must resolve, or the colour checks compare fallbacks').not.toBe('');
+    expect(probe.borderWidth, 'banner should have a border').not.toBe('0px');
+    expect(probe.borderColor, 'border should be the error colour').toBe(probe.error);
+    expect(probe.headingColor, 'heading should carry the error tone').toBe(probe.error);
+    expect(probe.bg, 'banner background should differ from the page').not.toBe(probe.pageBg);
+  });
+});
+
+/**
+ * The store switcher rendered every store with no height bound, so an account
+ * with dozens of them made the menu taller than the screen. The list must
+ * scroll inside the menu, and the Manage link must stay reachable below it.
+ */
+test.describe('store switcher', () => {
+  const markup = (n: number) => `
+    <aside class="sidebar"><div class="store-selector">
+      <button class="store-selector-btn">Store</button>
+      <div class="store-dropdown open">
+        <div class="store-dropdown-list">
+          <button class="store-dropdown-item"><span>All Stores</span></button>
+          ${Array.from({ length: n }, (_, i) =>
+            `<button class="store-dropdown-item"><span title="s${i}">A very long shared store name prefix ${i}</span></button>`).join('')}
+        </div>
+        <div class="store-dropdown-divider"></div>
+        <a class="store-dropdown-item store-dropdown-manage"><span>Manage Stores</span></a>
+      </div>
+    </div></aside>`;
+
+  for (const n of [36, 2, 1, 0]) {
+    test(`stays inside a laptop viewport with ${n} stores`, async ({ page }) => {
+      await page.setViewportSize({ width: 1280, height: 600 });
+      await page.setContent(`<style>${CSS}</style>${markup(n)}`);
+      const m = await page.locator('.store-dropdown').evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const l = el.querySelector('.store-dropdown-list')!;
+        const manage = el.querySelector('.store-dropdown-manage')!.getBoundingClientRect();
+        return { bottom: r.bottom, manageBottom: manage.bottom, scrolls: l.scrollHeight > l.clientHeight };
+      });
+      expect(m.bottom, 'menu must end above the viewport bottom').toBeLessThanOrEqual(600);
+      expect(m.manageBottom, 'Manage link must be on screen').toBeLessThanOrEqual(600);
+      expect(m.scrolls, 'only a long list should scroll').toBe(n >= 10);
+    });
+  }
+});
+
+/**
+ * A plugin's summary tiles, as the billing plugin's operator dashboard sends
+ * them: four `figure` elements, each with a tone.
+ *
+ * What covers what, because it is not obvious and getting it wrong here means
+ * trusting a test that cannot fail:
+ *
+ * * that the renderer emits the right classes at all is a Rust test, in
+ *   `plugin_page.rs`;
+ * * that every class it emits HAS a rule is also a Rust test there, which
+ *   calls the four class-picking helpers rather than reading them;
+ * * that the rules then produce four readably different numbers is only
+ *   answerable here. A rule can exist, match, and still lose to a later one of
+ *   equal specificity - the failure this whole file exists for - and no
+ *   amount of checking that a selector is present can see it.
+ */
+test.describe('plugin summary tiles', () => {
+  // The markup the Rust renderer produces for a figure element, by hand -
+  // these tests have no WASM to run. Kept in the same shape so a change to the
+  // renderer's structure shows up as a failure here rather than as a test that
+  // measures markup nothing emits any more.
+  const tile = (tone: string, label: string, value: string) => `
+    <div class="plugin-figure plugin-figure-${tone}">
+      <span class="plugin-figure-label">${label}</span>
+      <span class="plugin-figure-value">${value}</span>
+    </div>`;
+
+  const TONES = [
+    ['success', 'Active', '128'],
+    ['warning', 'Past due', '6'],
+    ['danger', 'Lapsed', '7'],
+    ['neutral', 'Monthly recurring', '64.00 USDC'],
+  ];
+
+  const MARKUP = `<div class="plugin-grid">${TONES.map(([t, l, v]) => tile(t, l, v)).join('')}</div>`;
+
+  // The host's own metric card, in the same page. Both of the tests below
+  // compare against it rather than against a resolved token: `--text-primary`
+  // is itself `var(--color-gray-900)`, and reading a chained custom property
+  // back out through a throwaway element compares the tile with a value
+  // reconstructed by the test instead of with the screen it has to match.
+  const HOST_CARD = `
+    <div class="metric-card">
+      <div class="metric-label">Volume</div><div class="metric-value">1.2</div>
+    </div>`;
+
+  test('every tone colours the number, and no two agree', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.setContent(`<style>${CSS}</style>${MARKUP}${HOST_CARD}`);
+
+    const seen: Record<string, string> = {};
+    for (const [tone] of TONES) {
+      seen[tone] = await page
+        .locator(`.plugin-figure-${tone} .plugin-figure-value`)
+        .evaluate((el) => getComputedStyle(el).color);
+    }
+
+    // Not merely "has a colour": an unstyled class still computes to the
+    // inherited one, so a missing rule looks identical to a present one unless
+    // the tones are compared against each other.
+    for (const [tone] of TONES) {
+      expect(seen[tone], `${tone} must resolve to a real colour`).toMatch(/^rgb/);
+    }
+    expect(seen['success'], 'success and danger must not read the same').not.toBe(seen['danger']);
+    expect(seen['warning'], 'warning and danger must not read the same').not.toBe(seen['danger']);
+    expect(seen['warning'], 'warning and success must not read the same').not.toBe(seen['success']);
+
+    // Neutral is the only tone that SHOULD read as plain text, so it is
+    // asserted against the host's own metric number rather than against a
+    // token this test resolves for itself - the point is that the two screens
+    // agree, not that one matches a value reconstructed here.
+    //
+    // Deliberately NOT claiming to guard the missing `.plugin-figure-neutral`
+    // rule that prompted all this. `.plugin-figure-value` sets this same
+    // colour, so deleting the neutral rule changes nothing a browser can
+    // measure and this assertion would keep passing. The Rust test that
+    // requires every emitted class to have a rule is what catches that, and it
+    // is the only thing that can.
+    const hostNumber = await page
+      .locator('.metric-value')
+      .evaluate((el) => getComputedStyle(el).color);
+    expect(hostNumber, 'the host metric must have a colour to compare against').toMatch(/^rgb/);
+    expect(
+      seen['neutral'],
+      'an untoned figure must read exactly like the dashboard\'s own number',
+    ).toBe(hostNumber);
+    for (const t of ['success', 'warning', 'danger']) {
+      expect(seen[t], `${t} must not fall back to the plain text colour`).not.toBe(hostNumber);
+    }
+  });
+
+  /**
+   * The tile is meant to be the same box as the dashboard's own metric card,
+   * because on an operator screen it sits directly beside four of them.
+   *
+   * It was not: no background and no shadow where the card has both, and 12px
+   * of padding against the card's 20px. The radius came from `--radius-md`,
+   * which no :root in this stylesheet defines, so it fell through to its own
+   * hardcoded `8px` - which is also what `--border-radius-lg` resolves to, so
+   * that part was latent rather than visible. Asserted here because a `var()`
+   * fallback cannot fail loudly: a token that stops existing looks exactly
+   * like one that works, until its value and the fallback diverge.
+   */
+  test('the tile is the same box as a dashboard metric card', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.setContent(`<style>${CSS}</style>${MARKUP}${HOST_CARD}`);
+
+    const box = (sel: string) =>
+      page.locator(sel).evaluate((el) => {
+        const s = getComputedStyle(el);
+        return {
+          radius: s.borderTopLeftRadius,
+          padding: s.paddingTop,
+          border: s.borderTopWidth,
+          bg: s.backgroundColor,
+        };
+      });
+    const figure = await box('.plugin-figure-success');
+    const metric = await box('.metric-card');
+
+    expect(figure.radius, 'radius must come from the shared token').toBe(metric.radius);
+    expect(figure.padding, 'padding must match the host card').toBe(metric.padding);
+    expect(figure.border, 'border width must match the host card').toBe(metric.border);
+    expect(figure.bg, 'the tile must sit on the same surface').toBe(metric.bg);
+    expect(figure.radius, 'a radius of 0 would mean the token did not resolve').not.toBe('0px');
+
+    const read = (sel: string) =>
+      page.locator(sel).evaluate((el) => {
+        const s = getComputedStyle(el);
+        return { size: s.fontSize, weight: s.fontWeight };
+      });
+    const value = await read('.plugin-figure-success .plugin-figure-value');
+    const mValue = await read('.metric-value');
+    expect(value.size, 'the number must be as prominent as the host metric').toBe(mValue.size);
+    expect(value.weight, 'and as heavy').toBe(mValue.weight);
+  });
+
+  /**
+   * Four tiles across on a dashboard, and not four tiles across on a phone.
+   * The renderer sets the column count from the plugin's own `grid` element,
+   * inline - so this asserts the one thing the stylesheet still owns: that a
+   * tile is not squeezed to nothing when the grid is narrow.
+   */
+  test('a tile stays legible at a phone width', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setContent(`<style>${CSS}</style>${MARKUP}`);
+    const w = await page
+      .locator('.plugin-figure-success')
+      .evaluate((el) => el.getBoundingClientRect().width);
+    expect(w, 'a tile must not collapse on a narrow screen').toBeGreaterThan(80);
   });
 });

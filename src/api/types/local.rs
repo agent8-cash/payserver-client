@@ -91,3 +91,41 @@ pub struct PluginPageInfo {
     pub label: String,
     pub icon: payserver_plugin_api::PageIcon,
 }
+
+/// The signed-in merchant's own account standing, from `/users/me/standing`.
+///
+/// Defined here because the server defines it in its own crate rather than in
+/// `api-types`; the shape is four plain fields, read-only.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AccountStandingInfo {
+    pub state: StandingState,
+    pub plan_name: Option<String>,
+    pub paid_through: Option<String>,
+    pub checkout_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StandingState {
+    Good,
+    Expiring,
+    Lapsed,
+    /// Also what a state this client does not know deserializes to, so a new
+    /// server-side state degrades to "show nothing" rather than failing the read.
+    #[serde(other)]
+    Unknown,
+}
+
+#[cfg(test)]
+mod standing_tests {
+    use super::*;
+
+    #[test]
+    fn a_state_the_client_does_not_know_reads_as_unknown() {
+        let info: AccountStandingInfo = serde_json::from_str(
+            r#"{"state":"suspended","plan_name":null,"paid_through":null,"checkout_url":null}"#,
+        )
+        .unwrap();
+        assert_eq!(info.state, StandingState::Unknown);
+    }
+}

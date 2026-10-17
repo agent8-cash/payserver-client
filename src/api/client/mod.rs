@@ -1,29 +1,69 @@
 //! HTTP client for the payserver API.
 //!
 //! Every method in this module's six files reaches the network only through
-//! `get`/`post`/`put`/`patch`/`delete` below, which call into `gloo-net` and
-//! panic the instant a request is built outside an actual wasm host - so
-//! `cargo test` cannot observe the method, path, or body any of them send.
-//! That is true of all 52 `pub async fn`s here (15 `admin`, 1 `health`, 8
-//! `invoices`, 3 `payments`, 2 `plugins`, 23 `stores`), not just the wallet
-//! writes below: it is this module's structural default, not drift in a few
-//! recent paths. `post`/`patch`/`delete` now carry a `#[cfg(test)]` seam
-//! (`TestTransport`) so `create_wallet`/`update_wallet`/`delete_wallet` run
-//! for real under `cargo test` (see `stores` tests); `get` and every other
-//! function here still cannot be exercised past its own pure helpers without
-//! the same seam extended to `get`, or a `wasm-bindgen-test` harness (already
-//! a dev-dependency, unused in this crate's test runs).
+//! `get`/`get_text`/`post`/`put`/`patch`/`delete` (plus the `_empty` variants)
+//! below, which call into `gloo-net` and panic the instant a request is built
+//! outside an actual wasm host - so `cargo test` cannot observe the method,
+//! path, or body any of them send. That is true of all 52 `pub async fn`s
+//! here (15 `admin`, 1 `health`, 8 `invoices`, 3 `payments`, 2 `plugins`, 23
+//! `stores`), not just the wallet calls below: it is this module's
+//! structural default, not drift in a few recent paths. `get`/`post`/`patch`/
+//! `delete` now carry a `#[cfg(test)]` seam (`TestTransport`) so calls built
+//! entirely on those - `create_wallet` (POST), `update_wallet` (PATCH),
+//! `delete_wallet` (DELETE), `export_wallet_xpub` (GET) (see `stores`
+//! tests) - none of the four is a `put` call, so all four are already inside
+//! the seam's coverage, not outside it - and the `invoices`/`payments` reads
+//! and writes, run for real under `cargo test`. `put`, the `_empty`
+//! variants, and anything that calls `build_request` directly (`logout`)
+//! still cannot be exercised past their own pure helpers without the same
+//! seam extended further, or a `wasm-bindgen-test` harness (already a
+//! dev-dependency, unused in this crate's test runs). Separately, any call
+//! that reaches `js_sys::*` (URL component encoding) panics the same way on
+//! a non-wasm host regardless of transport - the seam here does not help
+//! those branches; see the `invoices`/`payments` tests for which branches
+//! that leaves untested.
+
+use std::{cell::RefCell, rc::Rc};
 
 use gloo_net::http::{Request, RequestBuilder};
 use serde::{Serialize, de::DeserializeOwned};
 use thiserror::Error;
 
 mod admin;
+
+type SessionEndedHandler = Rc<dyn Fn()>;
+
+thread_local! {
+    static ON_SESSION_ENDED: RefCell<Option<SessionEndedHandler>> = const { RefCell::new(None) };
+}
+
+/// Register the one reaction to the server rejecting the session; `None` removes it.
+///
+/// A plain callback rather than a signal so that firing it from a 401 reads
+/// and writes nothing reactive on the caller's side.
+pub fn set_session_ended_handler(handler: Option<SessionEndedHandler>) {
+    ON_SESSION_ENDED.with(|h| *h.borrow_mut() = handler);
+}
+
+/// Every 401 from this client funnels through here: it tells the registered
+/// handler the session is over, and still returns the typed error so the
+/// calling page's own failure handling is unchanged.
+fn session_ended() -> ApiError {
+    // Clone out first so a handler that re-enters cannot hit a borrowed cell.
+    let handler = ON_SESSION_ENDED.with(|h| h.borrow().clone());
+    if let Some(handler) = handler {
+        handler();
+    }
+    ApiError::Unauthorized
+}
 mod health;
 mod invoices;
 mod payments;
 mod plugins;
+mod standing;
 mod stores;
+
+pub use admin::{EmailStatus, SafeModeStatus};
 
 /// API client errors.
 #[derive(Error, Debug, Clone)]
@@ -132,6 +172,16 @@ impl ApiClient {
 
     /// Make a GET request.
     async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, ApiError> {
+        #[cfg(test)]
+        if let Some(transport) = &self.test_transport {
+            let response = transport(RequestSpec {
+                method: "GET",
+                path: path.to_string(),
+                body: None,
+            })?;
+            return serde_json::from_value(response).map_err(|e| ApiError::Parse(e.to_string()));
+        }
+
         let request = self
             .build_request("GET", path)
             .build()
@@ -147,6 +197,21 @@ impl ApiClient {
 
     /// Make a GET request returning raw text (for CSV downloads).
     async fn get_text(&self, path: &str) -> Result<String, ApiError> {
+        #[cfg(test)]
+        if let Some(transport) = &self.test_transport {
+            let response = transport(RequestSpec {
+                method: "GET",
+                path: path.to_string(),
+                body: None,
+            })?;
+            return match response {
+                serde_json::Value::String(s) => Ok(s),
+                other => Err(ApiError::Parse(format!(
+                    "test transport: expected a string response for get_text, got {other}"
+                ))),
+            };
+        }
+
         let request = self
             .build_request("GET", path)
             .build()
@@ -158,7 +223,7 @@ impl ApiClient {
             .map_err(|e| ApiError::Network(e.to_string()))?;
 
         if response.status() == 401 {
-            return Err(ApiError::Unauthorized);
+            return Err(session_ended());
         }
 
         if !response.ok() {
@@ -277,7 +342,7 @@ impl ApiClient {
             .map_err(|e| ApiError::Network(e.to_string()))?;
 
         if response.status() == 401 {
-            return Err(ApiError::Unauthorized);
+            return Err(session_ended());
         }
 
         if !response.ok() {
@@ -319,7 +384,7 @@ impl ApiClient {
             .map_err(|e| ApiError::Network(e.to_string()))?;
 
         if response.status() == 401 {
-            return Err(ApiError::Unauthorized);
+            return Err(session_ended());
         }
         if !response.ok() {
             let message = response.text().await.unwrap_or_default();
@@ -344,7 +409,7 @@ impl ApiClient {
             .map_err(|e| ApiError::Network(e.to_string()))?;
 
         if response.status() == 401 {
-            return Err(ApiError::Unauthorized);
+            return Err(session_ended());
         }
         if !response.ok() {
             let message = response.text().await.unwrap_or_default();
@@ -369,7 +434,7 @@ impl ApiClient {
             .map_err(|e| ApiError::Network(e.to_string()))?;
 
         if response.status() == 401 {
-            return Err(ApiError::Unauthorized);
+            return Err(session_ended());
         }
         if !response.ok() {
             let message = response.text().await.unwrap_or_default();
@@ -387,7 +452,7 @@ impl ApiClient {
         response: gloo_net::http::Response,
     ) -> Result<T, ApiError> {
         if response.status() == 401 {
-            return Err(ApiError::Unauthorized);
+            return Err(session_ended());
         }
 
         if !response.ok() {
@@ -408,6 +473,19 @@ impl ApiClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn session_ended_notifies_handler_and_returns_typed_error() {
+        let fired = Rc::new(std::cell::Cell::new(0));
+        let seen = fired.clone();
+        set_session_ended_handler(Some(Rc::new(move || seen.set(seen.get() + 1))));
+        assert!(matches!(session_ended(), ApiError::Unauthorized));
+        assert_eq!(fired.get(), 1);
+
+        set_session_ended_handler(None);
+        assert!(matches!(session_ended(), ApiError::Unauthorized));
+        assert_eq!(fired.get(), 1, "a removed handler must not fire");
+    }
 
     #[test]
     fn test_api_client_new() {

@@ -12,3 +12,7 @@
 /node_modules
 /test-results
 /playwright-report
+
+# TMPDIR for local runs, see playwright.config.ts — keeps browser profiles
+# and Playwright's internal temp files off a RAM-backed /tmp.
+/.tmp

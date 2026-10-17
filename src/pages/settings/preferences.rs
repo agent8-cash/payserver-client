@@ -1,102 +1,46 @@
 //! Preferences settings tab.
+//!
+//! Deliberately has no controls. Theme, currency, timezone and date format
+//! used to be offered here, but each lived in a local signal that nothing
+//! read and nothing saved, so choosing a value changed nothing and was
+//! forgotten on reload. A control belongs on this tab only together with
+//! something that stores the choice and something that reads it back.
 
 use leptos::prelude::*;
 
 /// Preferences tab.
 #[component]
 pub fn PreferencesTab() -> impl IntoView {
-    let (theme, set_theme) = signal("system".to_string());
-    let (currency, set_currency) = signal("USD".to_string());
-    let (timezone, set_timezone) = signal("UTC".to_string());
-    let (date_format, set_date_format) = signal("mdy".to_string());
-
     view! {
         <div class="settings-tab-preferences">
             <div class="ps-card">
                 <div class="ps-card-header">
-                    <h3>"Appearance"</h3>
+                    <h3>"Preferences"</h3>
                 </div>
                 <div class="ps-card-body">
-                    <div class="form-group">
-                        <label class="form-label">"Theme"</label>
-                        <select
-                            class="form-select"
-                            prop:value=move || theme.get()
-                            on:change=move |ev| set_theme.set(event_target_value(&ev))
-                        >
-                            <option value="system">"System default"</option>
-                            <option value="light">"Light"</option>
-                            <option value="dark">"Dark"</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            <div class="ps-card">
-                <div class="ps-card-header">
-                    <h3>"Regional Settings"</h3>
-                </div>
-                <div class="ps-card-body">
-                    <div class="form-group">
-                        <label class="form-label">"Default Currency"</label>
-                        <select
-                            class="form-select"
-                            prop:value=move || currency.get()
-                            on:change=move |ev| set_currency.set(event_target_value(&ev))
-                        >
-                            <option value="USD">"USD - US Dollar"</option>
-                            <option value="EUR">"EUR - Euro"</option>
-                            <option value="GBP">"GBP - British Pound"</option>
-                            <option value="JPY">"JPY - Japanese Yen"</option>
-                            <option value="BTC">"BTC - Bitcoin"</option>
-                            <option value="ETH">"ETH - Ethereum"</option>
-                        </select>
-                        <p class="form-help">"Used for displaying amounts in your preferred currency"</p>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">"Timezone"</label>
-                        <select
-                            class="form-select"
-                            prop:value=move || timezone.get()
-                            on:change=move |ev| set_timezone.set(event_target_value(&ev))
-                        >
-                            <option value="UTC">"UTC"</option>
-                            <option value="America/New_York">"Eastern Time (US)"</option>
-                            <option value="America/Los_Angeles">"Pacific Time (US)"</option>
-                            <option value="Europe/London">"London"</option>
-                            <option value="Europe/Paris">"Paris"</option>
-                            <option value="Asia/Tokyo">"Tokyo"</option>
-                            <option value="Asia/Shanghai">"Shanghai"</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">"Date Format"</label>
-                        <select
-                            class="form-select"
-                            prop:value=move || date_format.get()
-                            on:change=move |ev| set_date_format.set(event_target_value(&ev))
-                        >
-                            <option value="mdy">"MM/DD/YYYY"</option>
-                            <option value="dmy">"DD/MM/YYYY"</option>
-                            <option value="ymd">"YYYY-MM-DD"</option>
-                        </select>
-                    </div>
-
-                    <div class="form-actions">
-                        // Same as Notifications: no persistence behind the form, so
-                        // saving would discard the edits silently.
-                        <button
-                            class="ps-btn ps-btn-primary ps-btn-sm"
-                            disabled=true
-                            title="Saving preferences is not implemented yet"
-                        >
-                            "Save preferences"
-                        </button>
-                    </div>
+                    <p class="form-help">
+                        "There are no display preferences to change yet."
+                    </p>
                 </div>
             </div>
         </div>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// Every control on this tab must persist and be read somewhere. Until
+    /// that exists the tab must offer none: an editable control with no
+    /// storage behind it silently discards the choice.
+    #[test]
+    fn tab_offers_no_unpersisted_controls() {
+        let src = include_str!("preferences.rs");
+        let view_src = src.split("#[cfg(test)]").next().unwrap();
+        for tag in ["<select", "<input", "<textarea", "<button"] {
+            assert!(
+                !view_src.contains(tag),
+                "preferences tab renders {tag}; wire it to storage (and a reader) first"
+            );
+        }
     }
 }
