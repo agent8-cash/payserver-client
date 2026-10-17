@@ -1,0 +1,19 @@
+# Every route the client router declares, composed from the nested path!()
+# segments in src/app/mod.rs. tests/route_list.rs fails when this file and the
+# router disagree, in either direction. A route is a full path; `:name` is a
+# parameter an end-to-end walk must fill in.
+/login
+/register
+/checkout/:id
+/
+/evm
+/evm/invoices
+/evm/invoices/:id
+/evm/payments
+/evm/payments/:id
+/evm/stores
+/evm/stores/:id
+/evm/wallets
+/evm/wallets/:id
+/evm/settings
+/evm/plugins/:id/:path

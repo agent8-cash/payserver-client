@@ -114,6 +114,7 @@ cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
 cargo test --all-targets
 python3 scripts/check-classes-styled.py
+python3 scripts/check-class-roles.py
 ```
 
 CI additionally checks the crate builds for `wasm32-unknown-unknown`, runs a
