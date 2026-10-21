@@ -167,7 +167,19 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Install trunk
-        run: cargo install trunk --locked
+      # VERSION-PINNED, and the pin is the point. `cargo install trunk --locked`
+      # resolves to the newest release every time it runs, and `--locked` pins
+      # that release's DEPENDENCIES, not the release itself - so the one thing it
+      # reads as promising is the one thing it does not do. trunk 0.22.0 raised
+      # its MSRV to 1.96.1 while rust-toolchain.toml here pins 1.95.0, and this
+      # step began failing on a tree that had not changed: the build broke
+      # because a third party published, not because anyone touched this
+      # repository. 0.21.14 declares 1.81.0 and is comfortably under the pin.
+      #
+      # A floating installer under a pinned toolchain is a time bomb with
+      # somebody else's hand on the timer. Raise this deliberately, together
+      # with rust-toolchain.toml, or not at all.
+        run: cargo install trunk --version '~0.21' --locked
 
       - name: Build
         run: trunk build --release

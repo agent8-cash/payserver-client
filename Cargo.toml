@@ -45,6 +45,11 @@ chrono = { version = "0.4", default-features = false, features = ["serde", "cloc
 api-types = { workspace = true }
 payserver-plugin-api = { workspace = true }
 types = { workspace = true }
+# Re-deriving the receiving account key from a recovery phrase, in the browser.
+# `bip32` is pure Rust; `bip39` is already in the tree via ui-kit's crypto.
+bip32 = { version = "0.5", default-features = false, features = ["alloc", "secp256k1"] }
+bip39 = "2.1"
+zeroize = "1.8"
 # Secret/PII redaction, shared with the payservers. Zero dependencies and
 # hand-written scanners rather than regexes: `regex` costs ~1 MB of WASM.
 scrub = { workspace = true }
@@ -99,6 +104,9 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 uuid = { version = "1.0", features = ["v4", "js"] }
 
 [dev-dependencies]
+k256 = { version = "0.13", features = ["ecdsa"] }
+sha3 = "0.10"
+hex = "0.4"
 wasm-bindgen-test = "0.3"
 # `ssr` only: rendering an `AnyView` to a string panics at runtime without it
 # (checked in `tachys::view::any_view`, not gated at compile time). Used

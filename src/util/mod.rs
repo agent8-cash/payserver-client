@@ -2,6 +2,7 @@
 
 pub mod chain;
 pub mod fiat;
+pub mod receiving_key;
 pub mod search;
 pub mod store;
 pub mod time;

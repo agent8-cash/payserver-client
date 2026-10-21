@@ -8,6 +8,7 @@ use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_params_map};
 
 use crate::api::{ApiClient, CreateWalletRequest, UpdateWalletRequest, Wallet};
+use crate::util::receiving_key::evm_account_xpub;
 
 /// Format ISO date string for display.
 fn format_date(iso: &str) -> String {
@@ -108,6 +109,53 @@ pub fn WalletsPage() -> impl IntoView {
         });
     };
 
+    // Opt-in: the receiving key is derived from a recovery phrase the merchant
+    // types in again, here, and only the resulting xpub is sent. Re-entry is
+    // deliberate: it makes the choice an explicit act, and it works long after
+    // signup rather than only while the phrase is still on screen.
+    let (show_phrase_form, set_show_phrase_form) = signal(false);
+    let (phrase, set_phrase) = signal(String::new());
+    let (phrase_name, set_phrase_name) = signal(String::new());
+    let (phrase_ack, set_phrase_ack) = signal(false);
+    let (phrase_busy, set_phrase_busy) = signal(false);
+    let (phrase_error, set_phrase_error) = signal(Option::<String>::None);
+
+    let on_create_from_phrase = move |_| {
+        let derived = evm_account_xpub(&phrase.get_untracked());
+        // The phrase is a secret: drop it from the field whatever the outcome.
+        set_phrase.set(String::new());
+        let xpub_value = match derived {
+            Ok(x) => x,
+            Err(e) => {
+                set_phrase_error.set(Some(e.to_string()));
+                return;
+            }
+        };
+        let name = phrase_name.get_untracked().trim().to_string();
+        let api = api.get();
+        set_phrase_busy.set(true);
+        set_phrase_error.set(None);
+        leptos::task::spawn_local(async move {
+            let req = CreateWalletRequest {
+                xpub: xpub_value,
+                name: (!name.is_empty()).then_some(name),
+                namespace: "eip155".to_string(),
+            };
+            match api.create_wallet(&req).await {
+                Ok(_) => {
+                    let _ = set_phrase_name.try_set(String::new());
+                    let _ = set_phrase_ack.try_set(false);
+                    let _ = set_show_phrase_form.try_set(false);
+                    let _ = set_refresh.try_update(|c| *c += 1);
+                }
+                Err(e) => {
+                    let _ = set_phrase_error.try_set(Some(e.to_string()));
+                }
+            }
+            let _ = set_phrase_busy.try_set(false);
+        });
+    };
+
     view! {
         <div class="wallets-page">
             // Page Header
@@ -123,6 +171,15 @@ pub fn WalletsPage() -> impl IntoView {
                     >
                         <IconPlus />
                         {move || if show_form.get() { "Cancel" } else { "Add wallet" }}
+                    </button>
+                    <button
+                        class="ps-btn ps-btn-secondary ps-btn-sm"
+                        on:click=move |_| {
+                            set_phrase.set(String::new());
+                            set_show_phrase_form.update(|v| *v = !*v)
+                        }
+                    >
+                        {move || if show_phrase_form.get() { "Cancel" } else { "Use my recovery phrase" }}
                     </button>
                 </div>
             </div>
@@ -165,6 +222,71 @@ pub fn WalletsPage() -> impl IntoView {
                                 disabled=move || creating.get() || xpub.get().trim().is_empty()
                             >
                                 {move || if creating.get() { "Adding..." } else { "Add wallet" }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            })}
+
+            {move || show_phrase_form.get().then(|| view! {
+                <div class="ps-card">
+                    <div class="ps-card-header"><h3>"Use my recovery phrase as a receiving wallet"</h3></div>
+                    <div class="ps-card-body">
+                        <p class="form-help">
+                            "This makes one secret do two jobs. The phrase already recovers your \
+                             account; if you use it here too, its extended public key will also \
+                             disclose every receiving address you will ever use and your whole \
+                             payment history to anyone who obtains it. It cannot spend funds, and \
+                             the phrase itself never leaves this browser, but you cannot undo \
+                             this once addresses are published. If you want the account and your \
+                             payments kept separate, cancel and add an xpub from a different \
+                             wallet instead."
+                        </p>
+                        <div class="form-group">
+                            <label class="form-label">"Recovery phrase"</label>
+                            <textarea
+                                class="form-input"
+                                rows="3"
+                                autocomplete="off"
+                                spellcheck="false"
+                                placeholder="Enter your 24 words"
+                                prop:value=move || phrase.get()
+                                on:input=move |ev| set_phrase.set(event_target_value(&ev))
+                            ></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">"Name (optional)"</label>
+                            <input
+                                type="text"
+                                class="form-input"
+                                prop:value=move || phrase_name.get()
+                                on:input=move |ev| set_phrase_name.set(event_target_value(&ev))
+                            />
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input
+                                    type="checkbox"
+                                    prop:checked=move || phrase_ack.get()
+                                    on:change=move |ev| set_phrase_ack.set(event_target_checked(&ev))
+                                />
+                                " I understand this phrase will also determine my receiving addresses"
+                            </label>
+                        </div>
+                        {move || phrase_error.get().map(|msg| view! {
+                            <p style="color: var(--color-error)">{msg}</p>
+                        })}
+                        <div class="form-actions">
+                            <button
+                                class="ps-btn ps-btn-primary ps-btn-sm"
+                                on:click=on_create_from_phrase
+                                disabled=move || {
+                                    phrase_busy.get()
+                                        || !phrase_ack.get()
+                                        || phrase.get().trim().is_empty()
+                                }
+                            >
+                                {move || if phrase_busy.get() { "Adding..." } else { "Add wallet from phrase" }}
                             </button>
                         </div>
                     </div>
