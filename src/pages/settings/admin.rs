@@ -172,6 +172,22 @@ pub fn AdminTab() -> impl IntoView {
         (ChainId::evm(534352), "Scroll"),
     ];
 
+    // Testnets this server can be told to enable, mirroring evm::testnet::ALL_TESTNETS
+    // (ethpayserver) - a server with no settings row yet gates on exactly this set
+    // (unconfigured_chain_ids), so without a panel for it an operator standing up a
+    // fresh, unconfigured instance had no toggles that did anything at all.
+    let all_testnets: Vec<(ChainId, &'static str)> = vec![
+        (ChainId::evm(11_155_111), "Sepolia"),
+        (ChainId::evm(17_000), "Holesky"),
+        (ChainId::evm(560_048), "Hoodi"),
+        (ChainId::evm(80_002), "Polygon Amoy"),
+        (ChainId::evm(421_614), "Arbitrum Sepolia"),
+        (ChainId::evm(11_155_420), "Optimism Sepolia"),
+        (ChainId::evm(84_532), "Base Sepolia"),
+        (ChainId::evm(43_113), "Avalanche Fuji"),
+        (ChainId::evm(97), "BSC Testnet"),
+    ];
+
     // Load settings and users on mount
     leptos::task::spawn_local({
         let api = api.get_untracked();
@@ -549,6 +565,41 @@ pub fn AdminTab() -> impl IntoView {
                     </p>
                     <div class="admin-networks-grid">
                         {all_networks.into_iter().map(|(chain_id, name)| {
+                            let for_class = chain_id.clone();
+                            let for_checked = chain_id.clone();
+                            let for_toggle = chain_id.clone();
+                            view! {
+                                <div class=move || if enabled_chain_ids.get().contains(&for_class) { "admin-network-item enabled" } else { "admin-network-item" }>
+                                    <div class="admin-network-info">
+                                        <span class="admin-network-name">{name}</span>
+                                        <span class="admin-network-chain-id">"Chain: "{chain_id.to_string()}</span>
+                                    </div>
+                                    <label class="toggle">
+                                        <input
+                                            type="checkbox"
+                                            prop:checked=move || enabled_chain_ids.get().contains(&for_checked)
+                                            on:change=move |_| toggle_network(for_toggle.clone())
+                                        />
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                            }
+                        }).collect_view()}
+                    </div>
+                </div>
+            </div>
+
+            // Enabled Networks (Testnet)
+            <div class="ps-card">
+                <div class="ps-card-header">
+                    <h3>"Enabled Networks (Testnet)"</h3>
+                </div>
+                <div class="ps-card-body">
+                    <p class="form-help" style="margin-bottom: 16px;">
+                        "Test networks for staging and development. A fresh instance with no saved settings gates on exactly this set."
+                    </p>
+                    <div class="admin-networks-grid">
+                        {all_testnets.into_iter().map(|(chain_id, name)| {
                             let for_class = chain_id.clone();
                             let for_checked = chain_id.clone();
                             let for_toggle = chain_id.clone();
