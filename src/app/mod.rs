@@ -16,8 +16,8 @@ use ui_kit::{AuthProvider, LoginPage, RegisterPage, UiKitStyles};
 use crate::api::Store;
 use crate::pages::{
     CheckoutPage, DashboardPage, InvoiceDetailPage, InvoicesPage, NotFoundPage, PaymentDetailPage,
-    PaymentsPage, PluginPageView, SettingsPage, StoreDetailPage, StoresPage, WalletDetailPage,
-    WalletsPage,
+    PaymentsPage, PluginPageView, RecoveryPage, SettingsPage, StoreDetailPage, StoresPage,
+    WalletDetailPage, WalletsPage,
 };
 
 use layout::ProtectedLayout;
@@ -102,8 +102,14 @@ pub fn App() -> impl IntoView {
             <Router>
                 <Routes fallback=|| view! { <NotFoundPage /> }>
                     // Public routes (no layout)
-                    <Route path=path!("/login") view=|| view! { <LoginPage redirect_to=return_to::take() /> } />
+                    <Route path=path!("/login") view=|| view! {
+                        <LoginPage redirect_to=return_to::take() />
+                        <p class="ps-auth-footer">
+                            <a href="/recovery" class="ps-auth-link">"Lost access to your account? Recover it"</a>
+                        </p>
+                    } />
                     <Route path=path!("/register") view=|| view! { <RegisterPage /> } />
+                    <Route path=path!("/recovery") view=|| view! { <RecoveryPage /> } />
                     <Route path=path!("/checkout/:id") view=|| view! { <CheckoutPage /> } />
 
                     // Protected routes — single ProtectedLayout, child pages swap via <Outlet/>
