@@ -16,7 +16,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use ui_kit::auth::types::{DeviceType, EncryptedBlob, KdfParams};
+use ui_kit::auth::types::{DeviceType, EncryptedBlob, KdfParams, LoginResponse};
 
 use super::{ApiClient, ApiError};
 
@@ -149,6 +149,37 @@ impl ApiClient {
         )
         .await
     }
+
+    /// `enroll_device`, but only reachable once a step-up re-auth has
+    /// already minted a session newer than `FreshlyAuthenticatedUser`'s
+    /// 5-minute window (see `pages::settings::security`'s module doc for
+    /// why the add-device flow needs step-up at all before this call).
+    ///
+    /// `step_up` is that attempt's outcome. `Err` - a cancelled or failed
+    /// WebAuthn assertion, or the step-up login calls never reaching the
+    /// server - returns before this makes any request of its own, so it can
+    /// never produce the 401 that would fire the global session-ended
+    /// handler on `enroll_device`'s behalf: there is no `self.post` call on
+    /// that path for a 401 to come from.
+    pub async fn enroll_device_after_step_up(
+        self,
+        step_up: Result<LoginResponse, String>,
+        device_name: &str,
+        device_type: DeviceType,
+        encrypted_symmetric_key: EncryptedBlob,
+        kdf_params: KdfParams,
+    ) -> Result<DeviceInfo, String> {
+        let login_response = step_up?;
+        self.with_token(Some(login_response.session_id.to_string()))
+            .enroll_device(
+                device_name,
+                device_type,
+                encrypted_symmetric_key,
+                kdf_params,
+            )
+            .await
+            .map_err(|e| e.to_string())
+    }
 }
 
 #[cfg(test)]
@@ -272,5 +303,92 @@ mod tests {
         assert_eq!(body["encrypted_symmetric_key"]["ciphertext"], "Y2lwaGVy");
         assert_eq!(body["kdf_params"]["algorithm"], "argon2id");
         assert_eq!(body["device_name"], "New laptop");
+    }
+
+    fn test_blob_and_params() -> (EncryptedBlob, KdfParams) {
+        (
+            EncryptedBlob {
+                ciphertext: "Y2lwaGVy".to_string(),
+                iv: "aXY=".to_string(),
+                mac: "bWFj".to_string(),
+            },
+            KdfParams {
+                algorithm: "argon2id".to_string(),
+                memory_kb: 65536,
+                iterations: 3,
+                parallelism: 4,
+                salt: "c2FsdA==".to_string(),
+            },
+        )
+    }
+
+    #[test]
+    fn a_failed_step_up_never_reaches_the_network_so_it_can_never_trigger_a_logout() {
+        // No response is configured on this transport on purpose: if
+        // `enroll_device_after_step_up` called it anyway, the test would
+        // panic on the unwrap below rather than silently passing - the
+        // transport is in `recording_transport`'s closure, never invoked.
+        let (transport, recorded) = recording_transport(serde_json::json!(null));
+        let client = ApiClient::with_test_transport("", transport);
+        let (blob, params) = test_blob_and_params();
+
+        let result = block_on(client.enroll_device_after_step_up(
+            Err("step-up verification was cancelled or failed".to_string()),
+            "New laptop",
+            DeviceType::Browser,
+            blob,
+            params,
+        ));
+
+        // `DeviceInfo` has no `PartialEq`, so match the `Err` arm directly
+        // rather than `assert_eq!`-ing the whole `Result`.
+        assert!(matches!(
+            result,
+            Err(ref e) if e == "step-up verification was cancelled or failed"
+        ));
+        assert!(
+            recorded.lock().unwrap().is_none(),
+            "a cancelled/failed step-up must short-circuit before any request - \
+             in particular, it must never call POST /users/me/devices, since \
+             that 401ing would fire the global session-ended/logout handler"
+        );
+    }
+
+    #[test]
+    fn a_successful_step_up_retries_enroll_device_with_the_fresh_session() {
+        let (transport, recorded) = recording_transport(serde_json::json!({
+            "id": "44444444-4444-4444-4444-444444444444",
+            "name": "New laptop",
+            "device_type": "browser",
+            "created_at": "2026-01-01T00:00:00Z",
+            "last_used_at": null,
+            "is_active": true,
+        }));
+        let client = ApiClient::with_test_transport("", transport);
+        let (blob, params) = test_blob_and_params();
+
+        let fresh_session = uuid::Uuid::parse_str("55555555-5555-5555-5555-555555555555").unwrap();
+        let login_response = LoginResponse {
+            session_id: ui_kit::auth::types::SessionId(fresh_session),
+            device_id: ui_kit::auth::types::DeviceId(uuid::Uuid::new_v4()),
+            encrypted_symmetric_key: blob.clone(),
+            kdf_params: params.clone(),
+            email: None,
+            primary_wallet_address: None,
+            expires_at: "2026-01-01T00:00:00Z".to_string(),
+        };
+
+        let result = block_on(client.enroll_device_after_step_up(
+            Ok(login_response),
+            "New laptop",
+            DeviceType::Browser,
+            blob,
+            params,
+        ));
+        assert_eq!(result.unwrap().name, "New laptop");
+
+        let spec = recorded.lock().unwrap().clone().unwrap();
+        assert_eq!(spec.method, "POST");
+        assert_eq!(spec.path, "/api/users/me/devices");
     }
 }

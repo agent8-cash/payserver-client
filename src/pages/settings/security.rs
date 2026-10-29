@@ -14,8 +14,10 @@
 
 use leptos::prelude::*;
 use ui_kit::auth::session::{get_device_id, get_device_name};
-use ui_kit::auth::types::{DeviceType, StartRecoveryRequest};
-use ui_kit::auth::webauthn::create_credential;
+use ui_kit::auth::types::{
+    CompletePasskeyLoginRequest, DeviceType, LoginResponse, StartRecoveryRequest,
+};
+use ui_kit::auth::webauthn::{create_credential, get_credential};
 use ui_kit::hooks::use_api::ApiClient as UiApiClient;
 use ui_kit::use_auth;
 
@@ -24,6 +26,42 @@ use crate::auth_crypto;
 use crate::components::{ErrorState, LoadingState};
 
 use super::format_date;
+
+/// The step-up ceremony `on_add_submit` runs immediately before
+/// `enroll_device`: a plain login (asserting with any of the account's
+/// passkeys - discoverable credentials, so the one just registered counts
+/// too) that mints a session with a fresh `created_at`. That is the one
+/// thing `FreshlyAuthenticatedUser` actually checks (see this module's doc
+/// and `ethpayserver/server/src/api/extractors.rs`), and nothing before this
+/// point in the flow refreshes it - the recovery-phrase check proves
+/// possession of the phrase, not session age.
+///
+/// A cancelled or failed assertion is caught here, before the login is
+/// ever completed, so the caller gets a plain `Err` to show inline - never
+/// a 401 that could be mistaken for the session itself having ended.
+async fn perform_step_up(login_api: &UiApiClient) -> Result<LoginResponse, String> {
+    let challenge = login_api
+        .start_passkey_login()
+        .await
+        .map_err(|e| format!("Could not start step-up verification: {e}"))?;
+
+    let credential = get_credential(&challenge.options)
+        .await
+        .map_err(|e| format!("Step-up verification was cancelled or failed: {e}"))?;
+
+    login_api
+        .complete_passkey_login(CompletePasskeyLoginRequest {
+            challenge_id: challenge.challenge_id,
+            credential,
+            // Reuse this browser's existing device id/name so step-up logs
+            // in on the same device record rather than minting a second one.
+            device_id: get_device_id(),
+            device_name: get_device_name(),
+            device_type: DeviceType::Browser,
+        })
+        .await
+        .map_err(|e| format!("Step-up verification failed: {e}"))
+}
 
 #[derive(Clone, Copy, PartialEq)]
 enum AddStep {
@@ -175,8 +213,24 @@ pub fn SecurityTab() -> impl IntoView {
                 return;
             }
 
+            // `POST /users/me/devices` requires a session newer than
+            // `FreshlyAuthenticatedUser`'s 5-minute window - nothing above
+            // this point refreshes the session, so step up with a real
+            // login before retrying it (see `perform_step_up` and this
+            // module's doc). Reuses `recovery_api`: both it and the step-up
+            // login hit unauthenticated endpoints, so the same client works
+            // for either.
+            let step_up = perform_step_up(&recovery_api).await;
+            if let Ok(ref response) = step_up {
+                // The step-up login is real, so treat it like one: update
+                // the session the rest of the app uses, not just the one
+                // `enroll_device_after_step_up` retries with below.
+                auth.save_login(response);
+            }
+
             match api
-                .enroll_device(
+                .enroll_device_after_step_up(
+                    step_up,
                     &get_device_name(),
                     DeviceType::Browser,
                     start.encrypted_symmetric_key,
