@@ -2,7 +2,7 @@
 
 The web frontend for the random.cash payservers. One client, any chain.
 
-It was extracted from [ethpayserver](https://github.com/randomcash/ethpayserver),
+It was extracted from [ethpayserver](https://github.com/gcannelloni/ethpayserver),
 where it lived as `client/`, with its history intact — `git log` here goes back
 to the first commit of the frontend in January 2026.
 
@@ -18,7 +18,7 @@ could exist.
 
 So the rule here is structural, not aspirational: **this repository has no
 `path` dependency on any payserver, and cannot acquire one.** Everything shared
-arrives through [payserver-commons](https://github.com/randomcash/payserver-commons),
+arrives through [payserver-commons](https://github.com/gcannelloni/payserver-commons),
 pinned by revision in `Cargo.toml`. If the client needs to know something about
 a chain, that knowledge belongs in commons — as a CAIP-2 identifier, an
 `api-types` shape, a `ui-kit` component — where every payserver reads the same
