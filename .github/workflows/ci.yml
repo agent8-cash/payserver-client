@@ -33,11 +33,22 @@ jobs:
       - name: No ticket ids or tracker links in source
         run: ./scripts/check-no-ticket-refs.sh
 
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned to the exact version in rust-toolchain.toml, not `@stable` -
+      # see the matching comment in .forgejo/workflows/ci.yml for why.
+      - uses: dtolnay/rust-toolchain@1.95.0
         with:
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+
+      - name: Diagnostics - toolchain and tree identity
+        run: |
+          rustc -Vv
+          rustfmt --version
+          rustup show active-toolchain
+          pwd
+          git rev-parse HEAD
+          git status --short
 
       # A committed Cargo.lock that does not carry the pinned revision means
       # someone ran `scripts/commons.sh link` and committed the result. That
@@ -99,7 +110,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.95.0
       - uses: Swatinem/rust-cache@v2
       - name: Test
         run: cargo test --all-targets
@@ -113,7 +124,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
@@ -161,7 +172,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
@@ -282,19 +293,19 @@ jobs:
       #
       # Only `main` deploys to testnet. A release tag is deliberately NOT wired
       # to production here: promoting to production stays a deliberate act, run
-      # by hand against central-infrastructure.
+      # by hand against the private deploy repository.
       - name: Deploy to testnet
         if: github.ref == 'refs/heads/main'
         env:
           # Same secret name ethpayserver uses to dispatch its own deploy.
-          # central-infrastructure is private, so GITHUB_TOKEN cannot reach it.
+          # The deploy repository is private, so GITHUB_TOKEN cannot reach it.
           RCS_DISPATCH_PAT: ${{ secrets.RCS_DISPATCH_PAT }}
         run: |
           set -e
           if [ -z "$RCS_DISPATCH_PAT" ]; then
             echo "::error::RCS_DISPATCH_PAT is not set on this repository, so the image was"
-            echo "published but nothing was deployed. Add a PAT with repo scope on"
-            echo "randomcash/central-infrastructure:"
+            echo "published but nothing was deployed. Add a PAT with repo scope on the"
+            echo "private deploy repository:"
             echo "  gh secret set RCS_DISPATCH_PAT --repo randomcash/payserver-client"
             exit 1
           fi
