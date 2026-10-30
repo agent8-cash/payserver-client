@@ -8,9 +8,10 @@
 #     OIDC token. Forgejo issues no such token, so keyless signing cannot work
 #     here at all - it would need a stored key, which is the thing keyless exists
 #     to avoid.
-# Both need a different runner profile, the same conversation as
-# central-infrastructure's docker-compose steps. Until then the image is still
-# built and signed on GitHub, reached through the mirror of the default branch.
+# Both need a different runner profile, the same open question as for the
+# private deploy repository's docker-compose steps. Until then the image is
+# still built and signed on GitHub, reached through the mirror of the default
+# branch.
 #
 # Forgejo reads only .forgejo/workflows once it exists and GitHub reads only
 # .github/workflows, so these coexist and neither platform runs twice. The uses:
