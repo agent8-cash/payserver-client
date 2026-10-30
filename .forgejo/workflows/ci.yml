@@ -52,11 +52,37 @@ jobs:
       - name: No ticket ids or tracker links in source
         run: ./scripts/check-no-ticket-refs.sh
 
-      - uses: https://github.com/dtolnay/rust-toolchain@stable
+      # Pinned to the exact version in rust-toolchain.toml, not `@stable`.
+      # `@stable` only sets rustup's *global default*; cargo still resolves
+      # the toolchain.toml override for every command run inside the repo, so
+      # on a GitHub-hosted runner (fresh VM, no toolchain installed yet) the
+      # override's version gets installed up front either way and nothing is
+      # observable. On this persistent, self-hosted runner, `@stable` had
+      # already put some other version in `rustup default`, and rust-toolchain.toml's
+      # pin can lag `stable` by a long way - so the actual pinned toolchain
+      # was only ever fetched lazily, on first use, by rustup's own
+      # auto-install, outside this action's retry loop and off this job's own
+      # diagnostics. A lazy fetch on a long-lived box is exactly the kind of
+      # runner-state dependency that can make the same commit pass once and
+      # fail once. Pinning here makes the install explicit, retried, and the
+      # same thing rust-toolchain.toml already asks for.
+      - uses: https://github.com/dtolnay/rust-toolchain@1.95.0
         with:
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
       - uses: https://github.com/Swatinem/rust-cache@v2
+
+      # Required reading for the next time this gate disagrees with itself:
+      # print exactly what decided the verdict, so two runs on one sha can be
+      # diffed instead of re-guessed. No conclusions drawn here - just the facts.
+      - name: Diagnostics - toolchain and tree identity
+        run: |
+          rustc -Vv
+          rustfmt --version
+          rustup show active-toolchain
+          pwd
+          git rev-parse HEAD
+          git status --short
 
       # A committed Cargo.lock that does not carry the pinned revision means
       # someone ran `scripts/commons.sh link` and committed the result. That
@@ -110,7 +136,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: https://github.com/dtolnay/rust-toolchain@stable
+      - uses: https://github.com/dtolnay/rust-toolchain@1.95.0
       - uses: https://github.com/Swatinem/rust-cache@v2
       - name: Test
         run: cargo test --all-targets
@@ -149,7 +175,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: https://github.com/dtolnay/rust-toolchain@stable
+      - uses: https://github.com/dtolnay/rust-toolchain@1.95.0
         with:
           targets: wasm32-unknown-unknown
       - uses: https://github.com/Swatinem/rust-cache@v2
