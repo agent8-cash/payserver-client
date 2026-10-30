@@ -56,6 +56,7 @@ fn session_ended() -> ApiError {
     }
     ApiError::Unauthorized
 }
+mod devices;
 mod health;
 mod invoices;
 mod payments;
@@ -64,6 +65,7 @@ mod standing;
 mod stores;
 
 pub use admin::{EmailStatus, SafeModeStatus};
+pub use devices::DeviceInfo;
 
 /// API client errors.
 #[derive(Error, Debug, Clone)]
@@ -193,6 +195,80 @@ impl ApiClient {
             .map_err(|e| ApiError::Network(e.to_string()))?;
 
         self.handle_response(response).await
+    }
+
+    /// Make a GET request with a JSON body.
+    ///
+    /// Not RFC-idiomatic, but required by the two `auth` crate endpoints
+    /// (`/auth/devices`, `/auth/passkeys`) that take the session id as a body
+    /// field instead of the `Authorization` header - see
+    /// `api::client::devices` for why.
+    async fn get_with_body<T: DeserializeOwned, B: Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, ApiError> {
+        #[cfg(test)]
+        if let Some(transport) = &self.test_transport {
+            let body = serde_json::to_value(body).map_err(|e| ApiError::Parse(e.to_string()))?;
+            let response = transport(RequestSpec {
+                method: "GET",
+                path: path.to_string(),
+                body: Some(body),
+            })?;
+            return serde_json::from_value(response).map_err(|e| ApiError::Parse(e.to_string()));
+        }
+
+        let request = self
+            .build_request("GET", path)
+            .json(body)
+            .map_err(|e| ApiError::Parse(e.to_string()))?;
+
+        let response = request
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+
+        self.handle_response(response).await
+    }
+
+    /// Make a DELETE request with a JSON body - same reasoning as
+    /// [`Self::get_with_body`].
+    async fn delete_with_body<B: Serialize>(&self, path: &str, body: &B) -> Result<(), ApiError> {
+        #[cfg(test)]
+        if let Some(transport) = &self.test_transport {
+            let body = serde_json::to_value(body).map_err(|e| ApiError::Parse(e.to_string()))?;
+            transport(RequestSpec {
+                method: "DELETE",
+                path: path.to_string(),
+                body: Some(body),
+            })?;
+            return Ok(());
+        }
+
+        let request = self
+            .build_request("DELETE", path)
+            .json(body)
+            .map_err(|e| ApiError::Parse(e.to_string()))?;
+
+        let response = request
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+
+        if response.status() == 401 {
+            return Err(session_ended());
+        }
+
+        if !response.ok() {
+            let message = response.text().await.unwrap_or_default();
+            return Err(ApiError::Http {
+                status: response.status(),
+                message,
+            });
+        }
+
+        Ok(())
     }
 
     /// Make a GET request returning raw text (for CSV downloads).

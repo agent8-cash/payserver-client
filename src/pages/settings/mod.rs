@@ -7,12 +7,14 @@ mod admin;
 mod api_keys;
 mod notifications;
 mod preferences;
+mod security;
 
 use account::AccountTab;
 use admin::AdminTab;
 use api_keys::ApiKeysTab;
 use notifications::NotificationsTab;
 use preferences::PreferencesTab;
+use security::SecurityTab;
 
 use crate::api::ApiClient;
 use leptos::prelude::*;
@@ -39,6 +41,7 @@ pub fn SettingsPage() -> impl IntoView {
     // Base tabs available to all users
     let base_tabs: Vec<(&str, &str)> = vec![
         ("account", "Account"),
+        ("security", "Security"),
         ("preferences", "Preferences"),
         ("api_keys", "API Keys"),
         ("notifications", "Notifications"),
@@ -98,6 +101,7 @@ pub fn SettingsPage() -> impl IntoView {
             <div class="settings-tab-content">
                 {move || match active_tab.get().as_str() {
                     "account" => view! { <AccountTab /> }.into_any(),
+                    "security" => view! { <SecurityTab /> }.into_any(),
                     "preferences" => view! { <PreferencesTab /> }.into_any(),
                     "api_keys" => view! { <ApiKeysTab /> }.into_any(),
                     "notifications" => view! { <NotificationsTab /> }.into_any(),

@@ -4,4 +4,6 @@ mod client;
 mod types;
 
 pub use self::types::*;
-pub use client::{ApiClient, ApiError, EmailStatus, SafeModeStatus, set_session_ended_handler};
+pub use client::{
+    ApiClient, ApiError, DeviceInfo, EmailStatus, SafeModeStatus, set_session_ended_handler,
+};

@@ -21,6 +21,11 @@ ui-kit = { git = "https://github.com/randomcash/payserver-commons.git", rev = "f
 # client has never heard of and this renderer, and a renamed variant should
 # be a build failure rather than a blank panel.
 payserver-plugin-api = { git = "https://github.com/randomcash/payserver-commons.git", rev = "f1e7610b6e22fb0f992914225b1ea9f5ed367461" }
+# KDF/AEAD/BIP39 primitives for the add-device and recovery-redemption flows
+# (see `src/auth_crypto.rs`). Pure Rust, wasm32-safe - same crate `ui-kit`'s
+# own registration flow already builds against, at the same pinned revision,
+# so it cannot disagree with what the server was wrapped under.
+crypto = { git = "https://github.com/randomcash/payserver-commons.git", rev = "f1e7610b6e22fb0f992914225b1ea9f5ed367461" }
 
 [package]
 name = "payserver-client"
@@ -45,11 +50,15 @@ chrono = { version = "0.4", default-features = false, features = ["serde", "cloc
 api-types = { workspace = true }
 payserver-plugin-api = { workspace = true }
 types = { workspace = true }
+crypto = { workspace = true }
 # Re-deriving the receiving account key from a recovery phrase, in the browser.
 # `bip32` is pure Rust; `bip39` is already in the tree via ui-kit's crypto.
 bip32 = { version = "0.5", default-features = false, features = ["alloc", "secp256k1"] }
 bip39 = "2.1"
 zeroize = "1.8"
+# Wire encoding for the `crypto` crate's wrap/unwrap output - same version the
+# `crypto` crate itself uses, so there's one base64 behavior in this binary.
+base64 = "0.22"
 # Secret/PII redaction, shared with the payservers. Zero dependencies and
 # hand-written scanners rather than regexes: `regex` costs ~1 MB of WASM.
 scrub = { workspace = true }

@@ -23,6 +23,7 @@
 
 pub mod api;
 pub mod app;
+pub mod auth_crypto;
 pub mod components;
 pub mod pages;
 pub mod services;

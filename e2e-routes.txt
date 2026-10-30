@@ -4,6 +4,7 @@
 # parameter an end-to-end walk must fill in.
 /login
 /register
+/recovery
 /checkout/:id
 /
 /evm
