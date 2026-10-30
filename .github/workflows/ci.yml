@@ -282,19 +282,19 @@ jobs:
       #
       # Only `main` deploys to testnet. A release tag is deliberately NOT wired
       # to production here: promoting to production stays a deliberate act, run
-      # by hand against central-infrastructure.
+      # by hand against the private deploy repository.
       - name: Deploy to testnet
         if: github.ref == 'refs/heads/main'
         env:
           # Same secret name ethpayserver uses to dispatch its own deploy.
-          # central-infrastructure is private, so GITHUB_TOKEN cannot reach it.
+          # The deploy repository is private, so GITHUB_TOKEN cannot reach it.
           RCS_DISPATCH_PAT: ${{ secrets.RCS_DISPATCH_PAT }}
         run: |
           set -e
           if [ -z "$RCS_DISPATCH_PAT" ]; then
             echo "::error::RCS_DISPATCH_PAT is not set on this repository, so the image was"
-            echo "published but nothing was deployed. Add a PAT with repo scope on"
-            echo "randomcash/central-infrastructure:"
+            echo "published but nothing was deployed. Add a PAT with repo scope on the"
+            echo "private deploy repository:"
             echo "  gh secret set RCS_DISPATCH_PAT --repo randomcash/payserver-client"
             exit 1
           fi
