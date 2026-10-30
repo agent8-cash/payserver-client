@@ -57,11 +57,19 @@ jobs:
       # persistent and shared, so rustup's "stable" alias there is one mutable
       # install on the machine - any job on it can bump what "stable" resolves
       # to, so two runs of the same commit can format with two different
-      # rustfmt builds and disagree on identical bytes. @master takes no
-      # toolchain input, so it reads rust-toolchain.toml instead and gets the
-      # pinned 1.95.0 every time, on every runner.
+      # rustfmt builds and disagree on identical bytes.
+      #
+      # dtolnay/rust-toolchain has no auto-detection of rust-toolchain.toml at
+      # all - @master still requires an explicit `toolchain` input, and fails
+      # the step outright ("'toolchain' is a required input") without one.
+      # So read the pin ourselves and pass it through, which is also the only
+      # way to get one value instead of two to keep in sync.
+      - name: Read pinned Rust channel
+        id: rust-channel
+        run: echo "channel=$(grep -m1 '^channel' rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
       - uses: https://github.com/dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ steps.rust-channel.outputs.channel }}
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
       - uses: https://github.com/Swatinem/rust-cache@v2
@@ -118,7 +126,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - name: Read pinned Rust channel
+        id: rust-channel
+        run: echo "channel=$(grep -m1 '^channel' rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
       - uses: https://github.com/dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.rust-channel.outputs.channel }}
       - uses: https://github.com/Swatinem/rust-cache@v2
       - name: Test
         run: cargo test --all-targets
@@ -157,8 +170,12 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Read pinned Rust channel
+        id: rust-channel
+        run: echo "channel=$(grep -m1 '^channel' rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
       - uses: https://github.com/dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ steps.rust-channel.outputs.channel }}
           targets: wasm32-unknown-unknown
       - uses: https://github.com/Swatinem/rust-cache@v2
 
