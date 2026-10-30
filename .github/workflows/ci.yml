@@ -33,8 +33,24 @@ jobs:
       - name: No ticket ids or tracker links in source
         run: ./scripts/check-no-ticket-refs.sh
 
-      - uses: dtolnay/rust-toolchain@stable
+      # @stable sets toolchain:stable on the action itself, overriding
+      # rust-toolchain.toml's pin. Kept in sync with the Forgejo copy, where
+      # that override is the actual bug (see .forgejo/workflows/ci.yml): on a
+      # persistent, shared runner "stable" is one mutable rustup alias for the
+      # whole machine, so it can resolve to a different rustfmt build between
+      # two runs of the same commit.
+      #
+      # dtolnay/rust-toolchain has no auto-detection of rust-toolchain.toml at
+      # all - @master still requires an explicit `toolchain` input, and fails
+      # the step outright ("'toolchain' is a required input") without one.
+      # So read the pin ourselves and pass it through, which is also the only
+      # way to get one value instead of two to keep in sync.
+      - name: Read pinned Rust channel
+        id: rust-channel
+        run: echo "channel=$(grep -m1 '^channel' rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ steps.rust-channel.outputs.channel }}
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
@@ -99,7 +115,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Read pinned Rust channel
+        id: rust-channel
+        run: echo "channel=$(grep -m1 '^channel' rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.rust-channel.outputs.channel }}
       - uses: Swatinem/rust-cache@v2
       - name: Test
         run: cargo test --all-targets
@@ -113,8 +134,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Read pinned Rust channel
+        id: rust-channel
+        run: echo "channel=$(grep -m1 '^channel' rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ steps.rust-channel.outputs.channel }}
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
 
@@ -161,8 +186,12 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Read pinned Rust channel
+        id: rust-channel
+        run: echo "channel=$(grep -m1 '^channel' rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ steps.rust-channel.outputs.channel }}
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
 
