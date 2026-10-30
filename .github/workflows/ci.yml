@@ -33,7 +33,14 @@ jobs:
       - name: No ticket ids or tracker links in source
         run: ./scripts/check-no-ticket-refs.sh
 
-      - uses: dtolnay/rust-toolchain@stable
+      # @stable sets toolchain:stable on the action itself, overriding
+      # rust-toolchain.toml's pin. Kept in sync with the Forgejo copy, where
+      # that override is the actual bug (see .forgejo/workflows/ci.yml): on a
+      # persistent, shared runner "stable" is one mutable rustup alias for the
+      # whole machine, so it can resolve to a different rustfmt build between
+      # two runs of the same commit. @master takes no toolchain input, so it
+      # reads rust-toolchain.toml and gets the pinned 1.95.0 every time.
+      - uses: dtolnay/rust-toolchain@master
         with:
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
@@ -99,7 +106,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
       - uses: Swatinem/rust-cache@v2
       - name: Test
         run: cargo test --all-targets
@@ -113,7 +120,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
@@ -161,7 +168,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
