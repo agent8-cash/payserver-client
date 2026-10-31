@@ -522,6 +522,42 @@ impl ApiClient {
         Ok(())
     }
 
+    /// Make a POST request with body, ignoring response body.
+    async fn post_no_content<B: Serialize>(&self, path: &str, body: &B) -> Result<(), ApiError> {
+        #[cfg(test)]
+        if let Some(transport) = &self.test_transport {
+            let body = serde_json::to_value(body).map_err(|e| ApiError::Parse(e.to_string()))?;
+            transport(RequestSpec {
+                method: "POST",
+                path: path.to_string(),
+                body: Some(body),
+            })?;
+            return Ok(());
+        }
+
+        let request = self
+            .build_request("POST", path)
+            .json(body)
+            .map_err(|e| ApiError::Parse(e.to_string()))?;
+
+        let response = request
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+
+        if response.status() == 401 {
+            return Err(session_ended());
+        }
+        if !response.ok() {
+            let message = response.text().await.unwrap_or_default();
+            return Err(ApiError::Http {
+                status: response.status(),
+                message,
+            });
+        }
+        Ok(())
+    }
+
     /// Handle response and parse JSON.
     async fn handle_response<T: DeserializeOwned>(
         &self,
