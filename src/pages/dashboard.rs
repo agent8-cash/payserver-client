@@ -1524,6 +1524,8 @@ mod tests {
     fn checklist_with_required_steps_done_is_not_held_open_by_email() {
         // All three required steps done and no email row: nothing left to show.
         assert!(!super::checklist_shown(true, true, true, false));
+        // With the email row offered, the box stays up on the same done steps.
+        assert!(super::checklist_shown(true, true, true, true));
         // Required work remaining always shows the box.
         assert!(super::checklist_shown(false, true, true, false));
         assert!(super::checklist_shown(true, false, true, false));
