@@ -36,6 +36,10 @@ pub struct SafeModeStatus {
 #[derive(Debug, Clone, Deserialize)]
 pub struct EmailStatus {
     pub configured: bool,
+    /// How long an emailed confirmation code stays valid, in minutes. Absent
+    /// from servers that predate the field, hence optional.
+    #[serde(default)]
+    pub change_ttl_minutes: Option<i64>,
 }
 
 impl ApiClient {
