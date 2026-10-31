@@ -613,3 +613,54 @@ test.describe('plugin summary tiles', () => {
     expect(w, 'a tile must not collapse on a narrow screen').toBeGreaterThan(80);
   });
 });
+
+/**
+ * `LoadingState` and `LoadingInline` render these exact trees. With no rule for
+ * their classes they lay out as zero-sized empty divs, so a slow load shows a
+ * blank page instead of a spinner.
+ */
+test.describe('loading states', () => {
+  const MARKUP = `
+    <div class="loading-container">
+      <div class="loading-spinner"></div>
+      <p class="loading-text">Loading...</p>
+    </div>
+    <div class="loading-inline">
+      <div class="loading-spinner-sm"></div>
+      <span class="loading-text-sm">Loading...</span>
+    </div>`;
+
+  const box = (page: import('@playwright/test').Page, sel: string) =>
+    page.locator(sel).evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const s = getComputedStyle(el);
+      return { w: r.width, h: r.height, radius: s.borderRadius, anim: s.animationName, size: s.fontSize };
+    });
+
+  test('the full-page spinner is drawn and animated', async ({ page }) => {
+    await page.setContent(`<style>${CSS}</style>${MARKUP}`);
+    const spinner = await box(page, '.loading-container .loading-spinner');
+    expect(spinner.w, 'a spinner with no rule is zero-sized').toBeGreaterThan(0);
+    expect(spinner.h).toBeGreaterThan(0);
+    expect(spinner.radius, 'a spinner is a circle').toBe('50%');
+    expect(spinner.anim, 'and it turns').not.toBe('none');
+
+    const container = await box(page, '.loading-container');
+    expect(container.h, 'the container must hold its spinner and message').toBeGreaterThan(spinner.h);
+  });
+
+  test('the inline spinner is drawn, animated and smaller than the full one', async ({ page }) => {
+    await page.setContent(`<style>${CSS}</style>${MARKUP}`);
+    const full = await box(page, '.loading-container .loading-spinner');
+    const small = await box(page, '.loading-inline .loading-spinner-sm');
+    expect(small.w).toBeGreaterThan(0);
+    expect(small.radius).toBe('50%');
+    expect(small.anim).not.toBe('none');
+    expect(small.w, 'the inline spinner is the smaller of the two').toBeLessThan(full.w);
+
+    const text = await box(page, '.loading-text');
+    const textSmall = await box(page, '.loading-text-sm');
+    expect(textSmall.size, 'inline text is smaller than the page message').not.toBe(text.size);
+    expect(parseFloat(textSmall.size)).toBeGreaterThan(0);
+  });
+});
