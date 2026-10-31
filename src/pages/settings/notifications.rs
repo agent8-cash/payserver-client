@@ -479,7 +479,12 @@ mod tests {
     #[test]
     fn the_servers_answer_maps_to_the_right_state() {
         use super::EmailAvailability as A;
-        let ok = |configured| Ok(EmailStatus { configured });
+        let ok = |configured| {
+            Ok(EmailStatus {
+                configured,
+                change_ttl_minutes: None,
+            })
+        };
         assert_eq!(A::from_status(Some(&ok(true))), A::Configured);
         assert_eq!(A::from_status(Some(&ok(false))), A::NotConfigured);
         assert_eq!(A::from_status(None), A::Checking);
@@ -517,6 +522,17 @@ mod tests {
             let s: crate::api::EmailStatus = serde_json::from_str(&body).unwrap();
             assert_eq!(s.configured, want);
         }
+    }
+
+    #[test]
+    fn the_status_body_reads_the_change_ttl_when_present_and_none_when_absent() {
+        // An older server omits the field entirely; that must still parse.
+        let with: crate::api::EmailStatus =
+            serde_json::from_str(r#"{"configured":true,"change_ttl_minutes":30}"#).unwrap();
+        assert_eq!(with.change_ttl_minutes, Some(30));
+        let without: crate::api::EmailStatus =
+            serde_json::from_str(r#"{"configured":true}"#).unwrap();
+        assert_eq!(without.change_ttl_minutes, None);
     }
 
     #[test]

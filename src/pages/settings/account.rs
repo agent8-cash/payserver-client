@@ -6,6 +6,22 @@ use ui_kit::use_auth;
 
 use super::format_date;
 
+/// The line under the address once the code has been mailed. The lifetime is
+/// the server's to report: without it, the copy makes no promise about a time
+/// it cannot back.
+#[component]
+fn CodeSentNotice(addr: String, ttl_minutes: Option<i64>) -> impl IntoView {
+    let expiry = match ttl_minutes {
+        Some(n) => format!(". It expires in {n} minutes."),
+        None => ". It will expire soon.".to_string(),
+    };
+    view! {
+        <p class="form-help" style="margin-bottom: 16px;">
+            "We sent a confirmation code to " <code>{addr}</code> {expiry}
+        </p>
+    }
+}
+
 /// Set or change the contact email. The address is only attached once the
 /// code mailed to it is entered here, so a typo cannot lock a merchant out of
 /// notices. Optional, and offered only where the server can send mail.
@@ -23,6 +39,12 @@ fn ContactEmailCard(has_email: bool, on_changed: Callback<()>) -> impl IntoView 
         email_status
             .get()
             .map(|w| (*w).as_ref().map(|s| s.configured).unwrap_or(false))
+    };
+
+    let ttl_minutes = move || {
+        email_status
+            .get()
+            .and_then(|w| (*w).as_ref().ok().and_then(|s| s.change_ttl_minutes))
     };
 
     let (address, set_address) = signal(String::new());
@@ -124,9 +146,7 @@ fn ContactEmailCard(has_email: bool, on_changed: Callback<()>) -> impl IntoView 
                             </form>
                         }.into_any(),
                         Some(addr) => view! {
-                            <p class="form-help" style="margin-bottom: 16px;">
-                                "We sent a confirmation code to " <code>{addr}</code> ". It expires in 30 minutes."
-                            </p>
+                            <CodeSentNotice addr=addr ttl_minutes=ttl_minutes() />
                             <form on:submit=on_confirm>
                                 <div class="form-group">
                                     <label class="form-label" for="contact-email-code">"Confirmation code"</label>
@@ -411,5 +431,34 @@ pub fn AccountTab() -> impl IntoView {
                 })}
             </Suspense>
         </div>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CodeSentNotice;
+    use leptos::prelude::*;
+
+    fn render(ttl_minutes: Option<i64>) -> String {
+        view! {
+            <CodeSentNotice addr="merchant@example.com".to_string() ttl_minutes=ttl_minutes />
+        }
+        .to_html()
+    }
+
+    #[test]
+    fn the_pending_copy_states_the_servers_ttl() {
+        let html = render(Some(15));
+        assert!(html.contains("merchant@example.com"));
+        assert!(html.contains("It expires in 15 minutes."));
+        assert!(!html.contains("30 minutes"));
+    }
+
+    #[test]
+    fn the_pending_copy_makes_no_time_promise_without_a_ttl() {
+        let html = render(None);
+        assert!(html.contains("merchant@example.com"));
+        assert!(html.contains("It will expire soon."));
+        assert!(!html.contains("minutes"));
     }
 }
