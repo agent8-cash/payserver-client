@@ -6,6 +6,170 @@ use ui_kit::use_auth;
 
 use super::format_date;
 
+/// Set or change the contact email. The address is only attached once the
+/// code mailed to it is entered here, so a typo cannot lock a merchant out of
+/// notices. Optional, and offered only where the server can send mail.
+#[component]
+fn ContactEmailCard(has_email: bool, on_changed: Callback<()>) -> impl IntoView {
+    let api = use_context::<Signal<ApiClient>>().expect("ApiClient must be provided");
+
+    let email_status = LocalResource::new(move || {
+        let api = api.get();
+        async move { api.get_email_status().await }
+    });
+    // None while loading; Some(false) when the server cannot send mail or the
+    // check failed, so no flow is offered that could never complete.
+    let configured = move || {
+        email_status
+            .get()
+            .map(|w| (*w).as_ref().map(|s| s.configured).unwrap_or(false))
+    };
+
+    let (address, set_address) = signal(String::new());
+    // Set once the code has been mailed; the confirm step only shows after it.
+    let (pending, set_pending) = signal(Option::<String>::None);
+    let (code, set_code) = signal(String::new());
+    let (busy, set_busy) = signal(false);
+    let (saved, set_saved) = signal(false);
+    let (error, set_error) = signal(Option::<String>::None);
+
+    let on_request = move |ev: leptos::ev::SubmitEvent| {
+        ev.prevent_default();
+        let new_email = address.get().trim().to_string();
+        if new_email.is_empty() || busy.get() {
+            return;
+        }
+        let api = api.get();
+        set_busy.set(true);
+        set_saved.set(false);
+        set_error.set(None);
+        leptos::task::spawn_local(async move {
+            match api.request_email_change(&new_email).await {
+                Ok(()) => {
+                    let _ = set_pending.try_set(Some(new_email));
+                }
+                Err(e) => {
+                    let _ = set_error.try_set(Some(e.to_string()));
+                }
+            }
+            let _ = set_busy.try_set(false);
+        });
+    };
+
+    let on_confirm = move |ev: leptos::ev::SubmitEvent| {
+        ev.prevent_default();
+        let token = code.get().trim().to_string();
+        if token.is_empty() || busy.get() {
+            return;
+        }
+        let api = api.get();
+        set_busy.set(true);
+        set_error.set(None);
+        leptos::task::spawn_local(async move {
+            match api.confirm_email_change(&token).await {
+                Ok(()) => {
+                    let _ = set_pending.try_set(None);
+                    let _ = set_address.try_set(String::new());
+                    let _ = set_code.try_set(String::new());
+                    let _ = set_saved.try_set(true);
+                    on_changed.run(());
+                }
+                Err(e) => {
+                    let _ = set_error.try_set(Some(e.to_string()));
+                }
+            }
+            let _ = set_busy.try_set(false);
+        });
+    };
+
+    let action_label = if has_email {
+        "Change email"
+    } else {
+        "Add email"
+    };
+
+    view! {
+        <div class="ps-card">
+            <div class="ps-card-header">
+                <h3>"Contact Email"</h3>
+                <span class="badge badge-neutral">"Optional"</span>
+            </div>
+            <div class="ps-card-body">
+                <p class="form-help" style="margin-bottom: 16px;">
+                    "Used for receipts and billing notices. Account recovery does not use it: recovery is seed-based, so an account without an email can still be recovered."
+                </p>
+                {move || match configured() {
+                    None => ().into_any(),
+                    Some(false) => view! {
+                        <p class="text-muted">"This server cannot send email, so a contact address cannot be verified here."</p>
+                    }.into_any(),
+                    Some(true) => match pending.get() {
+                        None => view! {
+                            <form on:submit=on_request>
+                                <div class="form-group">
+                                    <label class="form-label" for="contact-email">{action_label}</label>
+                                    <input
+                                        id="contact-email"
+                                        type="email"
+                                        class="form-input"
+                                        prop:value=move || address.get()
+                                        on:input=move |ev| set_address.set(event_target_value(&ev))
+                                    />
+                                </div>
+                                <div class="form-actions">
+                                    <button class="ps-btn ps-btn-primary ps-btn-sm" type="submit" disabled=move || busy.get()>
+                                        "Send confirmation code"
+                                    </button>
+                                </div>
+                            </form>
+                        }.into_any(),
+                        Some(addr) => view! {
+                            <p class="form-help" style="margin-bottom: 16px;">
+                                "We sent a confirmation code to " <code>{addr}</code> ". It expires in 30 minutes."
+                            </p>
+                            <form on:submit=on_confirm>
+                                <div class="form-group">
+                                    <label class="form-label" for="contact-email-code">"Confirmation code"</label>
+                                    <input
+                                        id="contact-email-code"
+                                        type="text"
+                                        class="form-input"
+                                        prop:value=move || code.get()
+                                        on:input=move |ev| set_code.set(event_target_value(&ev))
+                                    />
+                                </div>
+                                <div class="form-actions">
+                                    <button class="ps-btn ps-btn-primary ps-btn-sm" type="submit" disabled=move || busy.get()>
+                                        "Confirm"
+                                    </button>
+                                    <button
+                                        class="ps-btn ps-btn-secondary ps-btn-sm"
+                                        type="button"
+                                        disabled=move || busy.get()
+                                        on:click=move |_| {
+                                            set_pending.set(None);
+                                            set_code.set(String::new());
+                                            set_error.set(None);
+                                        }
+                                    >
+                                        "Use a different address"
+                                    </button>
+                                </div>
+                            </form>
+                        }.into_any(),
+                    },
+                }}
+                {move || saved.get().then(|| view! {
+                    <p class="form-help">"Contact email saved."</p>
+                })}
+                {move || error.get().map(|msg| view! {
+                    <p class="text-error">{msg}</p>
+                })}
+            </div>
+        </div>
+    }
+}
+
 /// Account settings tab — loads profile from `/auth/me`.
 #[component]
 pub fn AccountTab() -> impl IntoView {
@@ -134,6 +298,11 @@ pub fn AccountTab() -> impl IntoView {
                                     </div>
                                 </div>
                             </div>
+
+                            <ContactEmailCard
+                                has_email=has_email
+                                on_changed=Callback::new(move |_| user_resource.refetch())
+                            />
 
                             <div class="ps-card">
                                 <div class="ps-card-header">

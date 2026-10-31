@@ -84,6 +84,7 @@ web-sys = { version = "0.3", features = [
     "Blob",
     "BlobPropertyBag",
     "Url",
+    "Storage",
     "console",
     "WebSocket",
     "MessageEvent",
