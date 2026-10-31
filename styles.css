@@ -1728,6 +1728,41 @@ a:hover {
     text-decoration-color: var(--border-color);
 }
 
+/* The optional contact-email row: a dashed mark and a muted tag set it apart
+   from the required steps, so it reads as a suggestion, not unfinished setup. */
+.onboarding-step-optional .onboarding-step-mark {
+    border-style: dashed;
+}
+
+.onboarding-step-tag {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    padding: 0 var(--space-1);
+}
+
+.onboarding-step-hint {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+
+.onboarding-step-skip {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.onboarding-step-skip:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
 /* An arrow rather than the word "Go": the label beside it already says what
    the step is, so a second word only competed with it. The accessible name
    comes from aria-label on the link, not from the glyph. */

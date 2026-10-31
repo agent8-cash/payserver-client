@@ -49,6 +49,25 @@ impl ApiClient {
         self.get("/api/users/me/email/status").await
     }
 
+    /// Start setting or changing the account's email. The server mails a
+    /// confirmation code to `new_email`; nothing changes until it is confirmed.
+    pub async fn request_email_change(&self, new_email: &str) -> Result<(), ApiError> {
+        self.post_no_content(
+            "/api/users/me/email",
+            &serde_json::json!({ "new_email": new_email }),
+        )
+        .await
+    }
+
+    /// Confirm a pending email change with the code mailed to the new address.
+    pub async fn confirm_email_change(&self, token: &str) -> Result<(), ApiError> {
+        self.post_no_content(
+            "/api/users/me/email/confirm",
+            &serde_json::json!({ "token": token }),
+        )
+        .await
+    }
+
     /// Get the current authenticated user's info.
     pub async fn get_me(&self) -> Result<UserInfo, ApiError> {
         self.get("/api/auth/me").await
@@ -270,6 +289,42 @@ mod tests {
                 method: "GET",
                 path: "/api/users/me/email/status".to_string(),
                 body: None,
+            }
+        );
+    }
+
+    #[test]
+    fn request_email_change_posts_the_new_address() {
+        let (transport, recorded) = recording_transport(serde_json::Value::Null);
+        let client = ApiClient::with_test_transport("", transport);
+
+        block_on(client.request_email_change("merchant@example.com")).unwrap();
+
+        assert_eq!(
+            recorded.lock().unwrap().clone().unwrap(),
+            RequestSpec {
+                method: "POST",
+                path: "/api/users/me/email".to_string(),
+                body: Some(serde_json::json!({ "new_email": "merchant@example.com" })),
+            }
+        );
+    }
+
+    #[test]
+    fn confirm_email_change_posts_the_code_as_token() {
+        let (transport, recorded) = recording_transport(serde_json::Value::Null);
+        let client = ApiClient::with_test_transport("", transport);
+
+        block_on(client.confirm_email_change("6f1c2d3e-0000-4000-8000-000000000000")).unwrap();
+
+        assert_eq!(
+            recorded.lock().unwrap().clone().unwrap(),
+            RequestSpec {
+                method: "POST",
+                path: "/api/users/me/email/confirm".to_string(),
+                body: Some(serde_json::json!({
+                    "token": "6f1c2d3e-0000-4000-8000-000000000000"
+                })),
             }
         );
     }
