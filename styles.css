@@ -1440,7 +1440,9 @@ a:hover {
    Loading States
    ============================================ */
 .spinner,
-.ps-spinner {
+.ps-spinner,
+.loading-spinner,
+.loading-spinner-sm {
     width: 20px;
     height: 20px;
     border: 2px solid var(--border-color);
@@ -1449,11 +1451,38 @@ a:hover {
     animation: spin 0.6s linear infinite;
 }
 
-.spinner-sm { width: 14px; height: 14px; border-width: 1.5px; }
+.spinner-sm,
+.loading-spinner-sm { width: 14px; height: 14px; border-width: 1.5px; }
 .spinner-lg { width: 32px; height: 32px; border-width: 3px; }
 
 @keyframes spin {
     to { transform: rotate(360deg); }
+}
+
+/* Page-level and inline loading, rendered by LoadingState and LoadingInline. */
+.loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-12);
+}
+
+.loading-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.loading-text {
+    margin: 0;
+    font-size: var(--text-base);
+    color: var(--text-muted);
+}
+
+.loading-text-sm {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
 }
 
 .skeleton,
@@ -1697,6 +1726,41 @@ a:hover {
     color: var(--text-primary);
     text-decoration: line-through;
     text-decoration-color: var(--border-color);
+}
+
+/* The optional contact-email row: a dashed mark and a muted tag set it apart
+   from the required steps, so it reads as a suggestion, not unfinished setup. */
+.onboarding-step-optional .onboarding-step-mark {
+    border-style: dashed;
+}
+
+.onboarding-step-tag {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    padding: 0 var(--space-1);
+}
+
+.onboarding-step-hint {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+
+.onboarding-step-skip {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.onboarding-step-skip:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
 }
 
 /* An arrow rather than the word "Go": the label beside it already says what

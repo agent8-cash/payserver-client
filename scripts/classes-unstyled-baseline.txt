@@ -3,10 +3,4 @@
 # could be switched on without fixing all of them at once; it is
 # meant to shrink. Do not add to it to make a build pass.
 # Regenerate: scripts/check-classes-styled.py --update-baseline
-loading-container
-loading-inline
-loading-spinner
-loading-spinner-sm
 loading-state
-loading-text
-loading-text-sm
