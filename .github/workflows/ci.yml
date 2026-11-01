@@ -306,12 +306,12 @@ jobs:
             echo "::error::RCS_DISPATCH_PAT is not set on this repository, so the image was"
             echo "published but nothing was deployed. Add a PAT with repo scope on the"
             echo "private deploy repository:"
-            echo "  gh secret set RCS_DISPATCH_PAT --repo randomcash/payserver-client"
+            echo "  gh secret set RCS_DISPATCH_PAT --repo agent8-cash/payserver-client"
             exit 1
           fi
           curl -sS --fail-with-body -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $RCS_DISPATCH_PAT" \
-            https://api.github.com/repos/randomcash/central-infrastructure/dispatches \
+            https://api.github.com/repos/agent8-cash/central-infrastructure/dispatches \
             -d '{"event_type":"deploy-client","client_payload":{"environment":"testnet","sha_tag":"${{ steps.tag.outputs.sha_tag }}"}}'
           echo "dispatched deploy-client testnet ${{ steps.tag.outputs.sha_tag }}" >> "$GITHUB_STEP_SUMMARY"
