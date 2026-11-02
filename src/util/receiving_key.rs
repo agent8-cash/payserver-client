@@ -42,7 +42,7 @@ pub fn evm_account_xpub(phrase: &str) -> Result<String, ReceivingKeyError> {
     let mut seed = mnemonic.to_seed("");
     let path =
         DerivationPath::from_str(EVM_ACCOUNT_PATH).map_err(|_| ReceivingKeyError::Derivation)?;
-    let derived = XPrv::derive_from_path(seed, &path);
+    let derived = XPrv::derive_from_path(&seed, &path);
     seed.zeroize();
     let account = derived.map_err(|_| ReceivingKeyError::Derivation)?;
     Ok(account.public_key().to_string(Prefix::XPUB))
@@ -65,8 +65,7 @@ mod tests {
             .derive_child(ChildNumber::new(index, false).unwrap())
             .unwrap();
         let point = k256::PublicKey::from_sec1_bytes(&key.public_key().to_bytes()).unwrap();
-        let uncompressed =
-            k256::elliptic_curve::sec1::ToEncodedPoint::to_encoded_point(&point, false);
+        let uncompressed = k256::elliptic_curve::sec1::ToSec1Point::to_sec1_point(&point, false);
         let hash = Keccak256::digest(&uncompressed.as_bytes()[1..]);
         format!("0x{}", hex::encode(&hash[12..]))
     }
