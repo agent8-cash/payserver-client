@@ -53,7 +53,7 @@ types = { workspace = true }
 crypto = { workspace = true }
 # Re-deriving the receiving account key from a recovery phrase, in the browser.
 # `bip32` is pure Rust; `bip39` is already in the tree via ui-kit's crypto.
-bip32 = { version = "0.5", default-features = false, features = ["alloc", "secp256k1"] }
+bip32 = { version = "0.6", default-features = false, features = ["alloc", "secp256k1"] }
 bip39 = "2.1"
 zeroize = "1.8"
 # Wire encoding for the `crypto` crate's wrap/unwrap output - same version the
@@ -114,7 +114,7 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 uuid = { version = "1.0", features = ["v4", "js"] }
 
 [dev-dependencies]
-k256 = { version = "0.13", features = ["ecdsa"] }
+k256 = { version = "0.14", default-features = false, features = ["arithmetic"] }
 sha3 = "0.10"
 hex = "0.4"
 wasm-bindgen-test = "0.3"
