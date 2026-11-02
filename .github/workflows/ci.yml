@@ -21,7 +21,7 @@ concurrency:
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -104,9 +104,18 @@ jobs:
       - name: Check wasm32 target
         run: cargo check --target wasm32-unknown-unknown
 
+      # The runner image decides whether a job can run at all, so it is ours to
+      # choose, not GitHub's. `ubuntu-latest` moved to Ubuntu 26.04 and broke
+      # jobs across the fleet, with nothing comparing the already-pinned jobs
+      # to the floating ones.
+      - name: Every job names its runner image
+        run: ./scripts/check-runner-pin.sh
+
+      - name: Runner-pin guard self-test
+        run: ./scripts/check-runner-pin-selftest.sh
   test:
     name: Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -117,7 +126,7 @@ jobs:
 
   wasm-test:
     name: Wasm test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -140,7 +149,7 @@ jobs:
 
   layout:
     name: Layout
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -168,7 +177,7 @@ jobs:
 
   build:
     name: Build bundle
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -228,7 +237,7 @@ jobs:
   security-gate:
     name: Security gate
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -299,7 +308,7 @@ jobs:
     name: Publish image
     needs: [lint, test, wasm-test, layout, build]
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
