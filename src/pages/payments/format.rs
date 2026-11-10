@@ -4,6 +4,8 @@
 //! so a payment reads the same wherever it is shown.
 
 use crate::api::Payment;
+use std::collections::HashMap;
+use ui_kit::{trim_amount, units_to_decimal};
 
 /// Helper to determine payment status display.
 pub(crate) fn payment_status(payment: &Payment) -> &'static str {
@@ -61,4 +63,22 @@ pub(crate) fn truncate_hash(hash: &str, prefix: usize, suffix: usize) -> String 
     } else {
         hash.to_string()
     }
+}
+
+/// Fractional digits each asset's amounts are padded to in the list.
+///
+/// Compression is decided per value, so a column mixing `0.000139292` with
+/// `0.0₄85129` cannot be compared down the page. The list shows every amount
+/// of an asset as a plain literal at the widest scale on the page instead, so
+/// the digits line up; subscript compression stays on the single-value
+/// summaries (dashboard metric tiles) where there is nothing to compare against.
+pub(crate) fn column_scales(payments: &[Payment]) -> HashMap<String, usize> {
+    let mut scales = HashMap::new();
+    for payment in payments {
+        let literal = trim_amount(&units_to_decimal(&payment.amount, payment.decimals), 0);
+        let scale = literal.split_once('.').map_or(0, |(_, frac)| frac.len());
+        let widest = scales.entry(payment.asset_symbol.clone()).or_insert(0);
+        *widest = (*widest).max(scale);
+    }
+    scales
 }
