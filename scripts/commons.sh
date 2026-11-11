@@ -18,7 +18,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 manifest="$repo_root/Cargo.toml"
 config="$repo_root/.cargo/config.toml"
 url="https://github.com/randomcash/payserver-commons.git"
-crates=(api-types scrub types ui-kit)
+crates=(api-types crypto payserver-plugin-api scrub types ui-kit)
 
 die() { echo "error: $*" >&2; exit 1; }
 current_rev() { grep -m1 -oP 'rev = "\K[0-9a-f]{40}' "$manifest" || true; }
