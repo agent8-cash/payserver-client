@@ -239,7 +239,7 @@ pub fn ApiKeysTab() -> impl IntoView {
                 let all_permissions = get_available_permissions();
                 let mut grouped_permissions: std::collections::HashMap<&'static str, Vec<PermissionOption>> = std::collections::HashMap::new();
                 for perm in all_permissions {
-                    grouped_permissions.entry(perm.category).or_insert(Vec::new()).push(perm);
+                    grouped_permissions.entry(perm.category).or_default().push(perm);
                 }
                 let mut categories: Vec<_> = grouped_permissions.keys().copied().collect();
                 categories.sort();
