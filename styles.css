@@ -5384,6 +5384,49 @@ tr.payment-row {
     flex-shrink: 0;
 }
 
+.api-key-permissions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
+.api-key-permissions-label {
+    font-weight: 500;
+}
+
+.permission-checkboxes {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.permission-checkbox {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    cursor: pointer;
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+}
+
+.permission-checkbox input[type="checkbox"] {
+    cursor: pointer;
+}
+
+.permission-badge {
+    display: inline-block;
+    padding: var(--space-1) var(--space-2);
+    background: var(--color-bg-secondary);
+    border-radius: var(--border-radius-sm);
+    font-size: var(--text-xs);
+    white-space: nowrap;
+    color: var(--text-secondary);
+}
+
 /* Settings Info Box */
 .settings-info {
     display: flex;
