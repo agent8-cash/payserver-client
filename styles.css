@@ -5385,20 +5385,17 @@ tr.payment-row {
 }
 
 .api-key-permissions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
     margin-top: var(--space-2);
-}
-
-.permission-category {
-    margin-bottom: var(--space-3);
-}
-
-.permission-category-title {
-    font-size: var(--text-xs);
-    font-weight: 600;
-    margin-bottom: var(--space-2);
-    text-transform: uppercase;
-    opacity: 0.7;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
+}
+
+.api-key-permissions-label {
+    font-weight: 500;
 }
 
 .permission-checkboxes {

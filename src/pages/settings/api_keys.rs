@@ -7,116 +7,82 @@ use leptos::prelude::*;
 
 use super::{IconInfo, IconPlus};
 
-/// A permission that can be granted to an API key.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct PermissionOption {
-    pub policy: &'static str,
-    pub label: &'static str,
-    pub category: &'static str,
-}
+/// Store-scoped permissions a key can be granted, as (policy, label).
+///
+/// Full access is a separate toggle, not an entry here, so a scoped list and
+/// the full-access sentinel can never be sent together.
+const STORE_PERMISSIONS: [(&str, &str); 7] = [
+    ("ethpay.store.canviewstoresettings", "View store settings"),
+    (
+        "ethpay.store.canmodifystoresettings",
+        "Modify store settings",
+    ),
+    ("ethpay.store.canviewinvoices", "View invoices"),
+    ("ethpay.store.cancreateinvoice", "Create invoices"),
+    ("ethpay.store.canmodifyinvoices", "Modify invoices"),
+    ("ethpay.store.canviewpayments", "View payments"),
+    ("ethpay.store.canmanagewebhooks", "Manage webhooks"),
+];
 
-/// Available permissions for API keys, organized by category.
-fn get_available_permissions() -> Vec<PermissionOption> {
-    vec![
-        // Server permissions
-        PermissionOption {
-            policy: "ethpay.server.canviewserversettings",
-            label: "View server settings",
-            category: "Server",
-        },
-        PermissionOption {
-            policy: "ethpay.server.canmodifyserversettings",
-            label: "Modify server settings",
-            category: "Server",
-        },
-        PermissionOption {
-            policy: "ethpay.server.canmanagetokens",
-            label: "Manage tokens",
-            category: "Server",
-        },
-        PermissionOption {
-            policy: "ethpay.server.canviewusers",
-            label: "View users",
-            category: "Server",
-        },
-        PermissionOption {
-            policy: "ethpay.server.canmanageusers",
-            label: "Manage users",
-            category: "Server",
-        },
-        // Store permissions
-        PermissionOption {
-            policy: "ethpay.store.canviewstoresettings",
-            label: "View store settings",
-            category: "Store",
-        },
-        PermissionOption {
-            policy: "ethpay.store.canmodifystoresettings",
-            label: "Modify store settings",
-            category: "Store",
-        },
-        PermissionOption {
-            policy: "ethpay.store.canviewinvoices",
-            label: "View invoices",
-            category: "Store",
-        },
-        PermissionOption {
-            policy: "ethpay.store.cancreateinvoice",
-            label: "Create invoices",
-            category: "Store",
-        },
-        PermissionOption {
-            policy: "ethpay.store.canmodifyinvoices",
-            label: "Modify invoices",
-            category: "Store",
-        },
-        PermissionOption {
-            policy: "ethpay.store.canviewpayments",
-            label: "View payments",
-            category: "Store",
-        },
-        PermissionOption {
-            policy: "ethpay.store.canmanagewebhooks",
-            label: "Manage webhooks",
-            category: "Store",
-        },
-        // User permissions
-        PermissionOption {
-            policy: "ethpay.user.canviewprofile",
-            label: "View profile",
-            category: "User",
-        },
-        PermissionOption {
-            policy: "ethpay.user.canmodifyprofile",
-            label: "Modify profile",
-            category: "User",
-        },
-        PermissionOption {
-            policy: "ethpay.user.candeleteaccount",
-            label: "Delete account",
-            category: "User",
-        },
-        PermissionOption {
-            policy: "ethpay.user.canmanagenotifications",
-            label: "Manage notifications",
-            category: "User",
-        },
-        // Special permission
-        PermissionOption {
-            policy: "unrestricted",
-            label: "Unrestricted (full access)",
-            category: "Special",
-        },
-    ]
-}
+/// Wire sentinel for the owner's full role.
+const UNRESTRICTED: &str = "unrestricted";
 
-/// Display a user-friendly name for a permission policy.
+/// Display name for a permission policy, or the raw string when unknown.
 fn format_permission_name(policy: &str) -> String {
-    get_available_permissions()
+    STORE_PERMISSIONS
         .iter()
-        .find(|p| p.policy == policy)
-        .map(|p| p.label.to_string())
+        .find(|(p, _)| *p == policy)
+        .map(|(_, label)| label.to_string())
         .unwrap_or_else(|| policy.to_string())
+}
+
+/// A new key starts with nothing granted. Widening is always a deliberate act.
+fn default_selected_permissions() -> Vec<String> {
+    Vec::new()
+}
+
+/// The `permissions` list a create request sends. Full access overrides the
+/// per-action picks, so the two cannot be combined on the wire.
+fn request_permissions(full_access: bool, selected: &[String]) -> Vec<String> {
+    if full_access {
+        vec![UNRESTRICTED.to_string()]
+    } else {
+        selected.to_vec()
+    }
+}
+
+/// What a key's permissions column shows. `None` is a legacy key that inherits
+/// the owner's role in full, so it reads the same as `["unrestricted"]`.
+fn key_permissions_summary(permissions: Option<&[String]>) -> AnyView {
+    let full_access = || {
+        view! {
+            <div class="api-key-permissions">
+                <span class="permission-badge">"Full access"</span>
+            </div>
+        }
+        .into_any()
+    };
+    match permissions {
+        None => full_access(),
+        Some(perms) if perms.iter().any(|p| p == UNRESTRICTED) => full_access(),
+        Some([]) => view! {
+            <div class="api-key-permissions">"No access beyond login"</div>
+        }
+        .into_any(),
+        Some(perms) => view! {
+            <div class="api-key-permissions">
+                <span class="api-key-permissions-label">"Permissions:"</span>
+                {perms
+                    .iter()
+                    .map(|perm| {
+                        let name = format_permission_name(perm);
+                        view! { <span class="permission-badge">{name}</span> }
+                    })
+                    .collect_view()}
+            </div>
+        }
+        .into_any(),
+    }
 }
 
 /// API Keys tab.
@@ -137,7 +103,8 @@ pub fn ApiKeysTab() -> impl IntoView {
     // State for create form
     let (show_create, set_show_create) = signal(false);
     let (new_key_name, set_new_key_name) = signal(String::new());
-    let (selected_permissions, set_selected_permissions) = signal(vec!["unrestricted".to_string()]);
+    let (full_access, set_full_access) = signal(false);
+    let (selected_permissions, set_selected_permissions) = signal(default_selected_permissions());
     let (created_key, set_created_key) = signal(Option::<CreateApiKeyResponsePayload>::None);
     let (loading, set_loading) = signal(false);
 
@@ -159,11 +126,10 @@ pub fn ApiKeysTab() -> impl IntoView {
             return;
         }
         let client = api.get();
-        let perms = selected_permissions.get();
         let request = CreateApiKeyRequest {
             name: name.trim().to_string(),
             expires_at: None,
-            permissions: perms,
+            permissions: request_permissions(full_access.get(), &selected_permissions.get()),
         };
         set_loading.set(true);
         wasm_bindgen_futures::spawn_local(async move {
@@ -171,7 +137,8 @@ pub fn ApiKeysTab() -> impl IntoView {
                 set_created_key.set(Some(resp));
                 set_show_create.set(false);
                 set_new_key_name.set(String::new());
-                set_selected_permissions.set(vec!["unrestricted".to_string()]);
+                set_full_access.set(false);
+                set_selected_permissions.set(default_selected_permissions());
                 set_version.update(|v| *v += 1);
             }
             set_loading.set(false);
@@ -235,81 +202,69 @@ pub fn ApiKeysTab() -> impl IntoView {
             </div>
 
             // Create form
-            {move || show_create.get().then(|| {
-                let all_permissions = get_available_permissions();
-                let mut grouped_permissions: std::collections::HashMap<&'static str, Vec<PermissionOption>> = std::collections::HashMap::new();
-                for perm in all_permissions {
-                    grouped_permissions.entry(perm.category).or_default().push(perm);
-                }
-                let mut categories: Vec<_> = grouped_permissions.keys().copied().collect();
-                categories.sort();
-
-                view! {
-                    <div class="ps-card" style="margin-bottom: 16px;">
-                        <div class="ps-card-header">
-                            <h3>"Create new API key"</h3>
+            {move || show_create.get().then(|| view! {
+                <div class="ps-card" style="margin-bottom: 16px;">
+                    <div class="ps-card-header">
+                        <h3>"Create new API key"</h3>
+                    </div>
+                    <div class="ps-card-body">
+                        <div class="form-group">
+                            <label class="form-label">"Key name"</label>
+                            <input
+                                type="text"
+                                class="form-input"
+                                placeholder="e.g., Production Key"
+                                prop:value=move || new_key_name.get()
+                                on:input=move |ev| set_new_key_name.set(event_target_value(&ev))
+                            />
                         </div>
-                        <div class="ps-card-body">
-                            <div class="form-group">
-                                <label class="form-label">"Key name"</label>
+
+                        <div class="form-group">
+                            <label class="form-label">"Permissions"</label>
+                            <p class="form-help">"Leave everything off for a key that can authenticate but cannot perform any actions."</p>
+                            <label class="permission-checkbox">
                                 <input
-                                    type="text"
-                                    class="form-input"
-                                    placeholder="e.g., Production Key"
-                                    prop:value=move || new_key_name.get()
-                                    on:input=move |ev| set_new_key_name.set(event_target_value(&ev))
+                                    type="checkbox"
+                                    prop:checked=move || full_access.get()
+                                    on:change=move |ev| set_full_access.set(event_target_checked(&ev))
                                 />
-                            </div>
-
-                            <div class="form-group">
-                                <label class="form-label">"Permissions"</label>
-                                <p class="form-help" style="margin-bottom: 12px;">"Select which permissions this key should have. Leave none selected for a key that can authenticate but cannot perform any actions."</p>
-
-                                {categories.into_iter().map(|category| {
-                                    let perms = grouped_permissions.get(category).cloned().unwrap_or_default();
+                                <span>"Full access (unrestricted)"</span>
+                            </label>
+                            <div class="permission-checkboxes">
+                                {STORE_PERMISSIONS.iter().map(|&(policy, label)| {
+                                    let checked = move || selected_permissions.get().iter().any(|p| p == policy);
                                     view! {
-                                        <div class="permission-category" style="margin-bottom: 12px;">
-                                            <h4 class="permission-category-title" style="font-size: 0.875rem; font-weight: 600; margin-bottom: 8px; text-transform: uppercase; opacity: 0.7;">{category}</h4>
-                                            <div class="permission-checkboxes" style="display: flex; flex-direction: column; gap: 6px;">
-                                                {perms.into_iter().map(|perm| {
-                                                    let policy = perm.policy.to_string();
-                                                    let policy_for_event = perm.policy.to_string();
-                                                    let is_checked = move || selected_permissions.get().contains(&policy_for_event);
-                                                    view! {
-                                                        <label class="permission-checkbox" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked=is_checked
-                                                                on:change=move |_| toggle_permission(&policy)
-                                                            />
-                                                            <span>{perm.label}</span>
-                                                        </label>
-                                                    }
-                                                }).collect_view()}
-                                            </div>
-                                        </div>
+                                        <label class="permission-checkbox">
+                                            <input
+                                                type="checkbox"
+                                                checked=checked
+                                                prop:disabled=move || full_access.get()
+                                                on:change=move |_| toggle_permission(policy)
+                                            />
+                                            <span>{label}</span>
+                                        </label>
                                     }
                                 }).collect_view()}
                             </div>
+                        </div>
 
-                            <div class="form-actions">
-                                <button
-                                    class="ps-btn ps-btn-primary ps-btn-sm"
-                                    prop:disabled=move || loading.get()
-                                    on:click=on_create
-                                >
-                                    {move || if loading.get() { "Creating..." } else { "Create key" }}
-                                </button>
-                                <button
-                                    class="ps-btn ps-btn-ghost ps-btn-sm"
-                                    on:click=move |_| set_show_create.set(false)
-                                >
-                                    "Cancel"
-                                </button>
-                            </div>
+                        <div class="form-actions">
+                            <button
+                                class="ps-btn ps-btn-primary ps-btn-sm"
+                                prop:disabled=move || loading.get()
+                                on:click=on_create
+                            >
+                                {move || if loading.get() { "Creating..." } else { "Create key" }}
+                            </button>
+                            <button
+                                class="ps-btn ps-btn-ghost ps-btn-sm"
+                                on:click=move |_| set_show_create.set(false)
+                            >
+                                "Cancel"
+                            </button>
                         </div>
                     </div>
-                }
+                </div>
             })}
 
             // Show newly created key (plaintext shown once)
@@ -412,30 +367,7 @@ pub fn ApiKeysTab() -> impl IntoView {
                                                         </div>
                                                         <code class="api-key-value">{key.key_prefix}</code>
                                                         <span class="api-key-created">"Created "{key.created_at.to_rfc3339()}</span>
-                                                        {key.permissions.as_ref().map(|perms| {
-                                                            if perms.is_empty() {
-                                                                view! {
-                                                                    <div class="api-key-permissions" style="margin-top: 8px; font-size: 0.875rem; color: var(--text-secondary);">
-                                                                        "Permissions: None (authentication only)"
-                                                                    </div>
-                                                                }.into_any()
-                                                            } else {
-                                                                view! {
-                                                                    <div class="api-key-permissions" style="margin-top: 8px;">
-                                                                        <div style="font-size: 0.875rem; font-weight: 500; margin-bottom: 4px;">"Permissions:"</div>
-                                                                        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
-                                                                            {perms.iter().map(|perm| {
-                                                                                view! {
-                                                                                    <span class="permission-badge" style="display: inline-block; padding: 2px 8px; background: var(--color-bg-secondary); border-radius: 4px; font-size: 0.75rem; white-space: nowrap;">
-                                                                                        {format_permission_name(perm)}
-                                                                                    </span>
-                                                                                }
-                                                                            }).collect_view()}
-                                                                        </div>
-                                                                    </div>
-                                                                }.into_any()
-                                                            }
-                                                        })}
+                                                        {key_permissions_summary(key.permissions.as_deref())}
                                                     </div>
                                                     <div class="api-key-actions">
                                                         {(is_active && !is_deprecated).then(|| view! {
@@ -475,5 +407,134 @@ pub fn ApiKeysTab() -> impl IntoView {
                 </div>
             </div>
         </div>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Policy strings the server accepts on an API key, as its policy list
+    /// defines them. Mirrored here because this crate does not depend on the
+    /// server's auth crate.
+    const ACCEPTED_POLICIES: &[&str] = &[
+        "ethpay.server.canviewserversettings",
+        "ethpay.server.canmodifyserversettings",
+        "ethpay.server.canmanagetokens",
+        "ethpay.server.canviewusers",
+        "ethpay.server.canmanageusers",
+        "ethpay.store.canviewstoresettings",
+        "ethpay.store.canmodifystoresettings",
+        "ethpay.store.canviewinvoices",
+        "ethpay.store.cancreateinvoice",
+        "ethpay.store.canmodifyinvoices",
+        "ethpay.store.canviewpayments",
+        "ethpay.store.canmanagewebhooks",
+        "ethpay.user.canviewprofile",
+        "ethpay.user.canmodifyprofile",
+        "ethpay.user.candeleteaccount",
+        "ethpay.user.canmanagenotifications",
+        "unrestricted",
+    ];
+
+    /// The stylesheet and this file, read at compile time.
+    const STYLES: &str = include_str!("../../../styles.css");
+    const SOURCE: &str = include_str!("api_keys.rs");
+
+    #[test]
+    fn default_selection_grants_nothing() {
+        assert!(default_selected_permissions().is_empty());
+    }
+
+    #[test]
+    fn every_offered_policy_is_one_the_server_accepts() {
+        for (policy, _) in STORE_PERMISSIONS {
+            assert!(
+                ACCEPTED_POLICIES.contains(&policy),
+                "offered policy {policy} is not in the accepted set"
+            );
+        }
+    }
+
+    #[test]
+    fn full_access_overrides_picked_actions() {
+        let picked = vec!["ethpay.store.canviewinvoices".to_string()];
+        assert_eq!(request_permissions(true, &picked), vec![UNRESTRICTED]);
+        assert_eq!(request_permissions(false, &picked), picked);
+        assert!(request_permissions(false, &[]).is_empty());
+    }
+
+    #[test]
+    fn format_permission_name_maps_known_and_passes_through_unknown() {
+        assert_eq!(
+            format_permission_name("ethpay.store.canviewinvoices"),
+            "View invoices"
+        );
+        assert_eq!(
+            format_permission_name("ethpay.store.somethingnew"),
+            "ethpay.store.somethingnew"
+        );
+    }
+
+    /// `/* ... */` removed, so a class named in prose is not taken as styled.
+    fn strip_comments(css: &str) -> String {
+        let mut out = String::with_capacity(css.len());
+        let mut rest = css;
+        while let Some(open) = rest.find("/*") {
+            out.push_str(&rest[..open]);
+            match rest[open + 2..].find("*/") {
+                Some(close) => rest = &rest[open + 2 + close + 2..],
+                None => return out,
+            }
+        }
+        out.push_str(rest);
+        out
+    }
+
+    /// Whether the stylesheet has a rule whose selector names `class` as a
+    /// whole token.
+    fn is_defined(class: &str) -> bool {
+        let styles = strip_comments(STYLES);
+        let needle = format!(".{class}");
+        let mut from = 0;
+        while let Some(at) = styles[from..].find(&needle) {
+            let start = from + at;
+            let after = styles[start + needle.len()..].chars().next();
+            let before = styles[..start].chars().next_back();
+            let boundary_before =
+                before.is_none_or(|c| !c.is_ascii_alphanumeric() && c != '-' && c != '_');
+            let boundary_after =
+                after.is_none_or(|c| !c.is_ascii_alphanumeric() && c != '-' && c != '_');
+            if boundary_before && boundary_after {
+                return true;
+            }
+            from = start + 1;
+        }
+        false
+    }
+
+    /// Every literal permission class in this renderer's markup must have a
+    /// rule. Reads the source above the test module so the assertions do not
+    /// count. Classes outside this feature are covered by the repo-wide
+    /// `check-classes-styled.py` gate, not repeated here.
+    #[test]
+    fn every_class_this_renderer_emits_is_defined_in_the_stylesheet() {
+        let code = SOURCE.split("#[cfg(test)]").next().unwrap_or(SOURCE);
+        let mut missing = Vec::new();
+        let mut rest = code;
+        while let Some(at) = rest.find("class=\"") {
+            rest = &rest[at + 7..];
+            let Some(end) = rest.find('"') else { break };
+            let (value, tail) = rest.split_at(end);
+            rest = tail;
+            for class in value.split_whitespace() {
+                let ours =
+                    class.starts_with("permission") || class.starts_with("api-key-permissions");
+                if ours && !is_defined(class) {
+                    missing.push(class.to_string());
+                }
+            }
+        }
+        assert!(missing.is_empty(), "no rule in styles.css for: {missing:?}");
     }
 }
