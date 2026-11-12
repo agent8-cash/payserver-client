@@ -18,13 +18,28 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 manifest="$repo_root/Cargo.toml"
 config="$repo_root/.cargo/config.toml"
 url="https://github.com/randomcash/payserver-commons.git"
-crates=(api-types crypto payserver-plugin-api scrub types ui-kit)
 
 die() { echo "error: $*" >&2; exit 1; }
 current_rev() { grep -m1 -oP 'rev = "\K[0-9a-f]{40}' "$manifest" || true; }
 
+# Every commons crate the manifest pins, read from the manifest rather than
+# listed here. A literal list went stale once: two crates were added to the
+# manifest and not to the list, so `link` wrote a patch that omitted them. Such
+# a crate silently keeps building against the pinned revision while the script
+# reports "linked". Reading the manifest removes that class of drift.
+#
+# Only the subcommands that need the list call this, so read-only ones keep
+# working on a manifest the grep does not match.
+load_crates() {
+  mapfile -t crates < <(
+    grep -oP '^\K[a-z0-9_-]+(?= *= *\{ *git *= *"'"$url"'")' "$manifest" | sort -u
+  )
+  [ "${#crates[@]}" -gt 0 ] || die "no commons crates found in $manifest"
+}
+
 case "${1:-status}" in
   link)
+    load_crates
     path="${2:-$(dirname "$repo_root")/payserver-commons}"
     [ -d "$path" ] || die "no commons checkout at $path"
     path="$(cd "$path" && pwd)"   # absolute, so it survives any cwd
@@ -48,6 +63,7 @@ case "${1:-status}" in
     ;;
   unlink)
     [ -f "$config" ] || { echo "not linked"; exit 0; }
+    load_crates
     rm -f "$config"; rmdir "$(dirname "$config")" 2>/dev/null || true
     # Re-resolve so Cargo.lock records the pinned revision again rather than the
     # path form the link left behind. Without this, unlinking looks clean while
@@ -96,6 +112,7 @@ case "${1:-status}" in
     ;;
   pin)
     rev="${2:?usage: commons.sh pin <rev|main>}"
+    load_crates
     sibling="$(dirname "$repo_root")/payserver-commons"
     if [ "$rev" = main ]; then
       [ -d "$sibling" ] || die "need a commons checkout at $sibling to resolve 'main'"

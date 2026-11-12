@@ -113,6 +113,12 @@ jobs:
 
       - name: Runner-pin guard self-test
         run: ./scripts/check-runner-pin-selftest.sh
+
+      # Runs even when an earlier step failed, so a red guard above cannot hide
+      # a commons script that has drifted from the manifest.
+      - name: commons.sh self-test
+        if: always()
+        run: ./scripts/commons.test.sh
   test:
     name: Test
     runs-on: ubuntu-24.04
