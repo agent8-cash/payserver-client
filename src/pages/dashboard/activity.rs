@@ -1,12 +1,136 @@
 use super::network_status::{NetworkStatus, RELATIVE_TIME_TICK_MS, use_tick};
 use crate::api::{ApiClient, ApiError};
 use crate::app::{StoreContext, StoresStatus};
-use crate::pages::payments::format::{payment_status, payment_status_class, truncate_hash};
+use crate::pages::payments::format::{
+    column_scales, payment_status, payment_status_class, truncate_hash,
+};
 use crate::services::StatusUpdate;
 use crate::util::{chain_name, relative_time_at};
 use leptos::prelude::*;
 use leptos_router::components::A;
-use ui_kit::{CompactAmount, units_to_decimal};
+use ui_kit::{trim_amount, units_to_decimal};
+
+#[cfg(test)]
+mod test_recent_payments {
+    use super::*;
+    use crate::api::Payment;
+    use chrono::Utc;
+    use types::ChainId;
+
+    fn payment(amount: &str, decimals: u8, asset_symbol: &str) -> Payment {
+        Payment {
+            id: "pay-1".to_string(),
+            store_id: Some("store-1".to_string()),
+            store_name: Some("Test Store".to_string()),
+            chain_id: ChainId::evm(1),
+            invoice_id: "inv-1".to_string(),
+            tx_hash: "0xabc".to_string(),
+            amount: amount.to_string(),
+            asset_symbol: asset_symbol.to_string(),
+            token_address: None,
+            block_number: None,
+            from_address: None,
+            detected_at: Utc::now(),
+            confirmed_at: Some(Utc::now()),
+            reorged: false,
+            decimals,
+        }
+    }
+
+    #[test]
+    fn recent_payments_share_one_scale_per_asset() {
+        // Two amounts of the same asset with different scales:
+        // 0.000139292 (9 fractional) and 0.0000085129 (10 fractional)
+        let rows = [
+            payment("139292000000000", 18, "ETH"),
+            payment("8512900000000", 18, "ETH"),
+        ];
+
+        let scales = column_scales(&rows);
+        assert_eq!(scales["ETH"], 10);
+
+        // Both should render at the widest scale
+        let shown: Vec<_> = rows
+            .iter()
+            .map(|p| {
+                let scale = scales.get(&p.asset_symbol).copied().unwrap_or(0);
+                trim_amount(&units_to_decimal(&p.amount, p.decimals), scale)
+            })
+            .collect();
+
+        assert_eq!(shown, ["0.0001392920", "0.0000085129"]);
+    }
+
+    #[test]
+    fn recent_payments_keep_assets_independent() {
+        // Two different assets should have independent scales
+        let eth = payment("1000000000000000", 18, "ETH");
+        let usdc = payment("1500000", 6, "USDC");
+
+        let scales = column_scales(&[eth, usdc]);
+        assert_eq!(scales["ETH"], 3);
+        assert_eq!(scales["USDC"], 1);
+    }
+
+    #[test]
+    fn recent_payments_keep_the_exact_amount_in_the_label() {
+        let rows = [
+            payment("139292000000000", 18, "ETH"),
+            payment("8512900000000", 18, "ETH"),
+        ];
+
+        let scales = column_scales(&rows);
+
+        for payment in rows {
+            let scale = scales.get(&payment.asset_symbol).copied().unwrap_or(0);
+            let exact = format!(
+                "{} {}",
+                trim_amount(&units_to_decimal(&payment.amount, payment.decimals), 0),
+                payment.asset_symbol
+            );
+            let padded = format!(
+                "{} {}",
+                trim_amount(&units_to_decimal(&payment.amount, payment.decimals), scale),
+                payment.asset_symbol
+            );
+
+            // Check that we have different representations
+            if payment.amount == "8512900000000" {
+                assert_eq!(exact, "0.0000085129 ETH");
+                assert_eq!(padded, "0.0000085129 ETH");
+            } else {
+                assert_eq!(exact, "0.000139292 ETH");
+                assert_eq!(padded, "0.0001392920 ETH");
+            }
+
+            // Exact should always be the minimal representation
+            assert_eq!(
+                trim_amount(&units_to_decimal(&payment.amount, payment.decimals), 0),
+                exact.split_whitespace().next().unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn recent_payments_no_subscripts_in_list() {
+        let rows = [
+            payment("139292000000000", 18, "ETH"),
+            payment("8512900000000", 18, "ETH"),
+        ];
+
+        let scales = column_scales(&rows);
+
+        for payment in rows {
+            let scale = scales.get(&payment.asset_symbol).copied().unwrap_or(0);
+            let padded = trim_amount(&units_to_decimal(&payment.amount, payment.decimals), scale);
+
+            // Verify no subscript characters are present (U+2080-U+2089)
+            for c in padded.chars() {
+                assert!(!('\u{2080}'..='\u{2089}').contains(&c));
+            }
+        }
+    }
+}
 
 /// Recent activity section.
 #[component]
@@ -132,6 +256,9 @@ fn RecentPayments() -> impl IntoView {
                     // One clock read for the whole list, re-read on each tick.
                     let _ = tick.get();
                     let now_ms = js_sys::Date::now();
+                    // Compute scales once for the entire list, so all amounts
+                    // of the same asset display at the same width.
+                    let scales = column_scales(&rows);
 
                     view! {
                         <div class="payments-list">
@@ -145,6 +272,9 @@ fn RecentPayments() -> impl IntoView {
                                 let status = payment_status(&payment);
                                 let status_class = payment_status_class(&payment);
                                 let href = format!("/evm/payments/{}", payment.id);
+                                let scale = scales.get(&asset_symbol).copied().unwrap_or(0);
+                                let exact = format!("{} {asset_symbol}", trim_amount(&amount_decimal, 0));
+                                let padded = format!("{} {asset_symbol}", trim_amount(&amount_decimal, scale));
 
                                 view! {
                                     <A href=href attr:class="payment-row">
@@ -153,8 +283,8 @@ fn RecentPayments() -> impl IntoView {
                                             <span class="payment-time">{when}</span>
                                         </div>
                                         <div class="payment-amount">
-                                            <span class="payment-crypto">
-                                                <CompactAmount value=amount_decimal symbol=asset_symbol />
+                                            <span class="payment-crypto" title=exact.clone() aria-label=exact>
+                                                {padded}
                                             </span>
                                             <span class="payment-chain">{network}</span>
                                         </div>

@@ -9,9 +9,10 @@ use crate::components::{NoStoreSelected, PAGE_SIZE, Pagination};
 use crate::services::StatusUpdate;
 use crate::util::{chain_name, short_store_id, use_debounced_search};
 
-use super::format::{format_date, payment_status, payment_status_class, truncate_hash};
+use super::format::{
+    column_scales, format_date, payment_status, payment_status_class, truncate_hash,
+};
 use super::icons::{IconChevronRight, IconExport, IconExternalLink, IconMore, IconSearch};
-use std::collections::HashMap;
 
 use ui_kit::{trim_amount, units_to_decimal};
 
@@ -402,24 +403,6 @@ fn store_label(payment: &Payment) -> String {
     }
 }
 
-/// Fractional digits each asset's amounts are padded to in the table.
-///
-/// Compression is decided per value, so a column mixing `0.000139292` with
-/// `0.0₄85129` cannot be compared down the page. The table shows every amount
-/// of an asset as a plain literal at the widest scale on the page instead, so
-/// the digits line up; subscript compression stays on the single-value
-/// summaries (dashboard) where there is nothing to compare against.
-fn column_scales(payments: &[Payment]) -> HashMap<String, usize> {
-    let mut scales = HashMap::new();
-    for payment in payments {
-        let literal = trim_amount(&units_to_decimal(&payment.amount, payment.decimals), 0);
-        let scale = literal.split_once('.').map_or(0, |(_, frac)| frac.len());
-        let widest = scales.entry(payment.asset_symbol.clone()).or_insert(0);
-        *widest = (*widest).max(scale);
-    }
-    scales
-}
-
 /// Payment table row.
 ///
 /// `show_store` adds the store column, which the list page turns on only for
@@ -551,7 +534,8 @@ fn PaymentCard(payment: Payment, show_store: bool, scale: usize) -> impl IntoVie
 
 #[cfg(test)]
 mod tests {
-    use super::{column_scales, is_pick_a_store_400, store_label};
+    use super::super::format::column_scales;
+    use super::{is_pick_a_store_400, store_label};
     use crate::api::Payment;
     use types::ChainId;
     use ui_kit::{trim_amount, units_to_decimal};
