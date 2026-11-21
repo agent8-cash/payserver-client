@@ -64,12 +64,12 @@ mod tests {
     #[test]
     fn parses_the_dsn_shape() {
         let dsn = Dsn::parse(
-            "https://00000000000000000000000000000000@telemetry.example.com/random.cash",
+            "https://00000000000000000000000000000000@telemetry.example.com/agent8.cash",
         )
         .expect("valid DSN");
         assert!(
             dsn.ingest_url
-                .starts_with("https://telemetry.example.com/api/random.cash/envelope/?"),
+                .starts_with("https://telemetry.example.com/api/agent8.cash/envelope/?"),
             "{}",
             dsn.ingest_url
         );
@@ -105,7 +105,7 @@ mod tests {
         for raw in [
             "",
             "not-a-dsn",
-            "https://telemetry.example.com/random.cash", // no public key
+            "https://telemetry.example.com/agent8.cash", // no public key
             "https://key@telemetry.example.com",         // no project
             "ftp://key@telemetry.example.com/proj",      // unsupported scheme
             "https://key@telemetry.example.com/proj?evil=1", // query injection
