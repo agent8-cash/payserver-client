@@ -10,9 +10,9 @@ fn root() -> &'static Path {
 }
 
 #[test]
-fn tab_title_is_random_cash() {
+fn tab_title_is_agent8_cash() {
     let html = std::fs::read_to_string(root().join("index.html")).unwrap();
-    assert!(html.contains("<title>Random Cash</title>"));
+    assert!(html.contains("<title>agent8.cash</title>"));
 }
 
 #[test]
