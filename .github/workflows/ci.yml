@@ -211,7 +211,7 @@ jobs:
           for f in favicon.svg favicon.png favicon.ico; do
             test -s "dist/$f" || { echo "::error::dist/$f missing"; exit 1; }
           done
-          grep -q '<title>Random Cash</title>' dist/index.html
+          grep -q '<title>agent8.cash</title>' dist/index.html
 
       # The whole reason this crate hand-writes its secret scrubber instead of
       # using `regex` is bundle size (~1 MB of WASM). Print it on every build so
