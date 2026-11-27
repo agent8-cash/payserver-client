@@ -1,0 +1,28 @@
+# ETHPayServer
+
+> The web client for ETHPayServer, a self-hosted, non-custodial Ethereum/EVM payment
+> processor. This page is the dashboard/checkout UI; the API it talks to is what agents
+> will usually want. This is the project's default policy, shipped with the open-source
+> client - a deployment may override it at the reverse-proxy layer with its own policy.
+
+## Documentation
+
+- [Full documentation](https://docs.agent8.cash): architecture, guides, and the complete API reference
+- [OpenAPI spec](/api/api-docs/openapi.json): this instance's live, machine-readable API spec
+- [Interactive API docs](/swagger-ui): Swagger UI against this live instance
+
+## Source (MIT)
+
+- [ethpayserver](https://github.com/agent8-cash/ethpayserver): the API server and payment monitor
+- [payserver-client](https://github.com/agent8-cash/payserver-client): this web client
+- [payserver-commons](https://github.com/agent8-cash/payserver-commons): shared types/auth/crypto
+
+## Scope for agents
+
+Read-only endpoints (health checks, exchange rates, a public checkout page by invoice ID,
+invoice status) need no credentials. Everything else requires a bearer token (a session or
+an API key) scoped to specific permissions - there is nothing reachable by crawling or
+unauthenticated requests that creates, modifies, or moves anything. This server is
+non-custodial by design: it never holds a spending key and cannot move funds under any
+circumstance (see https://docs.agent8.cash/security.html). The refund endpoint exists and is
+permanently disabled (501), not merely access-controlled.

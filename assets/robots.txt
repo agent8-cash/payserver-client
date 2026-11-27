@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# Welcome, agents and crawlers - see /llms.txt for a guide to this site and
+# its API.
