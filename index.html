@@ -13,6 +13,11 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32">
     <link rel="shortcut icon" href="/favicon.ico">
+    <!-- Not referenced by any tag a browser acts on - robots.txt and llms.txt
+         are fetched directly by URL convention. The copy-file is only here to
+         make trunk ship them at the site root instead of under /assets. -->
+    <link data-trunk rel="copy-file" href="assets/robots.txt">
+    <link data-trunk rel="copy-file" href="assets/llms.txt">
     <link data-trunk rel="css" href="styles.css">
     <!-- Client error capture (Sentry-protocol error telemetry) — see src/telemetry.
          Empty content disables reporting, which is the default: the collector
